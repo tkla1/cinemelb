@@ -23,6 +23,7 @@ from __future__ import annotations
 import html as html_lib
 import re
 from datetime import datetime, time
+from urllib.parse import urljoin
 
 from ..http import Http
 from ..models import Film, MELBOURNE_TZ, film_key, make_screening
@@ -95,7 +96,11 @@ class NovaAdapter(Adapter):
                         key=key,
                         title=title,
                         synopsis=blurb,
-                        poster_url=poster.group(1) if poster else "",
+                        # Nova's teaser images are site-relative in places
+                        # ("/media/Webtiles/…"), which only resolve on its host.
+                        poster_url=urljoin(
+                            site + "/", poster.group(1)
+                        ) if poster else "",
                     )
 
                 for href, inner in _SHOWTIME.findall(panel):

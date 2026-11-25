@@ -14,6 +14,7 @@ from any Palace page and cache for the life of the process.
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import quote
 
 from ..http import Http
 from ..models import Film, film_key, make_screening
@@ -89,6 +90,13 @@ class PalaceAdapter(Adapter):
             if digits:
                 runtime = int(digits[0])
 
+            # posterOverride is a bare CMS filename ("BFF26 Parky 345x500.gif").
+            # Palace renders those through its /poster/ endpoint; a bare name on
+            # the site root (or any other host) is a 404.
+            poster = str(movie.get("posterOverride") or "").strip()
+            if poster and not poster.startswith(("http://", "https://")):
+                poster = f"{BASE}/poster/" + quote(poster.lstrip("/"))
+
             out.films.append(
                 Film(
                     key=key,
@@ -98,7 +106,7 @@ class PalaceAdapter(Adapter):
                     genres=[g for g in (movie.get("genreNames") or []) if g],
                     synopsis=(movie.get("synopsis") or "").strip(),
                     trailer_url=(movie.get("trailerUrl") or ""),
-                    poster_url=(movie.get("posterOverride") or ""),
+                    poster_url=poster,
                 )
             )
 

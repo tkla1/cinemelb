@@ -62,6 +62,12 @@ the built bundle and again against the live deploy):
    notes (`IMAX 3D … 3D`), "nothing left today" shown when a filter hid the
    sessions, missing `#foot-meta` counts, no-op suggestion list, no `/` focus
    shortcut, low-contrast active day in light mode.
+7. Poster URLs were not always URLs. Palace publishes `posterOverride` as a
+   bare CMS filename (`BFF26 Parky 345x500.gif`) and Cinema Nova has
+   site-relative teaser images (`/media/Webtiles/…`), so 20 films asked the
+   static host for `/BFF26 Parky 345x500.gif` and 404ed. The Palace adapter now
+   resolves those through its `/poster/` endpoint (verified 200 for all 12) and
+   Nova resolves against its own site.
 
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
