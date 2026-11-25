@@ -6,8 +6,8 @@ browser never calls these and never holds a key.
 | Source | What we take | Key needed | Status |
 |---|---|---|---|
 | [Maps & tickets](maps-and-tickets.md) | venue maps, chain ticket URLs | no | verified |
-| Ratings APIs | IMDb, Rotten Tomatoes, Metacritic | see page | research pending |
-| RT / Metacritic access | score pages, ToS | no | research pending |
+| [Ratings APIs](ratings-apis.md) | IMDb, RT, Metacritic, matching | OMDb optional | verified |
+| [RT / Metacritic access](rt-metacritic.md) | score pages, ToS, reliability | no | verified |
 
 Shared rules for every source:
 
