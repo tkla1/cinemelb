@@ -16,6 +16,9 @@
   var LEAD_MINUTES = 20;      // a session starting sooner than this is not catchable
   var RAIL_DAYS = 14;         // days shown in the day rail
   var TZ = 'Australia/Melbourne';
+  // Planning speed for drive estimates, matching cinemelb.geo.SPEED_KMH.drive,
+  // so the page and the CLI quote the same figure for the same venue.
+  var DRIVE_KMH = 22;
 
   // ------------------------------------------------------------------- state
   var S = {
@@ -30,6 +33,7 @@
     today: 0,          // index into bundle.dates
     nowMinute: 0,
     filters: { accessible: false, chain: '', later: false },
+    place: null,       // { name, lat, lon, source } once a location is set
     route: { name: 'day', date: null, film: null },
     chains: []
   };
@@ -115,6 +119,250 @@
     if (delta === 1) return 'Tomorrow';
     if (delta === -1) return 'Yesterday';
     return '';
+  }
+
+  // -------------------------------------------------------------- location
+  /* A location is one of: a bundle gazetteer hit, a Nominatim lookup, the
+     browser's own coordinates, or a literal "lat,lon". Distances are
+     great-circle, and drive time divides by DRIVE_KMH — the same estimate the
+     CLI prints, so "near Brunswick" reads the same in both places. */
+
+  function haversineKm(lat1, lon1, lat2, lon2) {
+    var R = 6371.0088;
+    var p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+    var dphi = (lat2 - lat1) * Math.PI / 180;
+    var dlam = (lon2 - lon1) * Math.PI / 180;
+    var a = Math.sin(dphi / 2) * Math.sin(dphi / 2) +
+            Math.cos(p1) * Math.cos(p2) * Math.sin(dlam / 2) * Math.sin(dlam / 2);
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }
+
+  function kmTo(cinemaIdx) {
+    if (!S.place) return null;
+    var c = S.cinemas[cinemaIdx];
+    if (!c || c[6] == null || c[7] == null) return null;
+    return haversineKm(S.place.lat, S.place.lon, c[6], c[7]);
+  }
+
+  function nearestKmOf(rows) {
+    var best = null;
+    for (var i = 0; i < rows.length; i++) {
+      var km = kmTo(S.rowCinema[rows[i]]);
+      if (km != null && (best === null || km < best)) best = km;
+    }
+    return best;
+  }
+
+  function fmtKm(km) {
+    if (km == null) return '';
+    if (km < 1) return Math.max(10, Math.round(km * 100) * 10) + ' m';
+    if (km < 10) return km.toFixed(1) + ' km';
+    return Math.round(km) + ' km';
+  }
+
+  function driveMinutes(km) {
+    return Math.max(1, Math.round(km / DRIVE_KMH * 60));
+  }
+
+  function fmtDrive(km) {
+    return km == null ? '' : '~' + driveMinutes(km) + ' min drive';
+  }
+
+  function titleCase(text) {
+    var acronyms = { cbd: 'CBD', qv: 'QV', au: 'AU', vic: 'VIC', unsw: 'UNSW' };
+    return text.split(' ').map(function (word) {
+      if (!word) return word;
+      var lower = word.toLowerCase();
+      if (acronyms[lower]) return acronyms[lower];
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }).join(' ');
+  }
+
+  function bundlePlace(q) {
+    var places = S.bundle.places || [];
+    var key = q.toLowerCase().replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (key.length < 3) return null;
+    var best = null, bestScore = -1;
+    for (var i = 0; i < places.length; i++) {
+      var name = places[i][0];
+      var score = -1;
+      if (name === key) score = 100;
+      else if (name.indexOf(key) === 0) score = 80;
+      else if (name.indexOf(' ' + key) > 0) score = 70;
+      else if (key.length >= 4 && name.indexOf(key) > 0) score = 50;
+      if (score > bestScore) { bestScore = score; best = places[i]; }
+    }
+    if (!best) return null;
+    return { name: titleCase(best[0]), lat: best[1], lon: best[2], source: 'gazetteer' };
+  }
+
+  function parseLatLon(q) {
+    var m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(q);
+    if (!m) return null;
+    var lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { name: lat.toFixed(4) + ', ' + lon.toFixed(4), lat: lat, lon: lon, source: 'coords' };
+  }
+
+  function shortLabel(displayName) {
+    // Nominatim returns "91, Swan Street, Cremorne, Yarra, Victoria, 3121,
+    // Australia" or "Fitzroy North, Yarra, Victoria, Australia". Keep the
+    // street (folding a leading house number into it) and the suburb, drop the
+    // administrative tail.
+    var parts = String(displayName || '').split(',').map(function (s) { return s.trim(); });
+    var skip = /^(australia|victoria|new south wales|vic|nsw|\d{4})$/i;
+    var keep = [];
+    for (var i = 0; i < parts.length && keep.length < 2; i++) {
+      var part = parts[i];
+      if (!part || skip.test(part)) continue;
+      if (/^\d+[a-z]?$/i.test(part) && parts[i + 1]) {
+        keep.push(part + ' ' + parts[++i]);
+        continue;
+      }
+      keep.push(part);
+    }
+    return keep.join(', ') || 'that address';
+  }
+
+  function geocodeRemote(q) {
+    var cache;
+    try { cache = JSON.parse(localStorage.getItem('cinemelb-geocache') || '{}'); }
+    catch (e) { cache = {}; }
+    if (cache[q]) return Promise.resolve(cache[q]);
+
+    var url = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1'
+            + '&countrycodes=au&q=' + encodeURIComponent(q);
+    return fetch(url, { headers: { Accept: 'application/json' } })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('lookup returned HTTP ' + resp.status);
+        return resp.json();
+      })
+      .then(function (list) {
+        if (!list || !list.length) throw new Error('no match for that address');
+        var hit = {
+          name: shortLabel(list[0].display_name),
+          lat: parseFloat(list[0].lat),
+          lon: parseFloat(list[0].lon),
+          source: 'nominatim'
+        };
+        try {
+          if (Object.keys(cache).length > 40) cache = {};
+          cache[q] = hit;
+          localStorage.setItem('cinemelb-geocache', JSON.stringify(cache));
+        } catch (e) { /* private mode */ }
+        return hit;
+      });
+  }
+
+  function nearestCinemaOverall() {
+    var best = null;
+    for (var i = 0; i < S.cinemas.length; i++) {
+      var km = kmTo(i);
+      if (km != null && (best === null || km < best.km)) {
+        best = { km: km, name: S.cinemas[i][0] };
+      }
+    }
+    return best;
+  }
+
+  function setNearStatus(html, cls) {
+    var el = document.getElementById('near-status');
+    if (!el) return;
+    el.className = 'near-status' + (cls ? ' ' + cls : '');
+    el.innerHTML = html;
+  }
+
+  function renderNear() {
+    var btn = document.getElementById('near-me');
+    if (!btn) return;
+    if (!S.place) {
+      btn.classList.remove('is-on');
+      btn.setAttribute('aria-pressed', 'false');
+      setNearStatus('');
+      return;
+    }
+    btn.classList.add('is-on');
+    btn.setAttribute('aria-pressed', 'true');
+    var near = S.bundle ? nearestCinemaOverall() : null;
+    var bits = ['Near <strong>' + esc(S.place.name) + '</strong>'];
+    if (near) {
+      bits.push('nearest cinema ' + fmtKm(near.km) + ' (' + fmtDrive(near.km) + ')');
+    }
+    setNearStatus(bits.join(' · ') +
+      ' <button type="button" class="near-clear" data-near-clear>Clear</button>', 'is-on');
+  }
+
+  function setPlace(place, persist) {
+    S.place = place;
+    try {
+      // Typed places are worth remembering; precise GPS coordinates are not
+      // written to disk at all.
+      if (persist) localStorage.setItem('cinemelb-place', JSON.stringify(place));
+      else localStorage.removeItem('cinemelb-place');
+    } catch (e) { /* private mode */ }
+    var input = document.getElementById('near-q');
+    if (input && place.source !== 'geolocation') input.value = place.name;
+    renderNear();
+    render();
+  }
+
+  function clearPlace() {
+    S.place = null;
+    try { localStorage.removeItem('cinemelb-place'); } catch (e) { /* private mode */ }
+    var input = document.getElementById('near-q');
+    if (input) input.value = '';
+    renderNear();
+    render();
+  }
+
+  function requestLocation() {
+    if (!navigator.geolocation) {
+      setNearStatus('This browser has no location support. Type a suburb or address instead.', 'is-error');
+      return;
+    }
+    var btn = document.getElementById('near-me');
+    if (btn) btn.disabled = true;
+    setNearStatus('Asking your browser for your location…', 'is-on');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      if (btn) btn.disabled = false;
+      setPlace({
+        name: 'your location',
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        source: 'geolocation'
+      }, false);
+    }, function (err) {
+      if (btn) btn.disabled = false;
+      var msg = err && err.code === 1
+        ? 'Location permission was denied. Allow it in the browser, or type a suburb or address.'
+        : 'Could not get your location' +
+          (err && err.message ? ' (' + esc(err.message) + ')' : '') + '.';
+      setNearStatus(esc(msg), 'is-error');
+    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+  }
+
+  function submitNear(event) {
+    if (event) event.preventDefault();
+    var input = document.getElementById('near-q');
+    var q = input ? input.value.trim() : '';
+    if (!q) return;
+
+    var coords = parseLatLon(q);
+    if (coords) { setPlace(coords, true); return; }
+
+    var hit = bundlePlace(q);
+    if (hit) { setPlace(hit, true); return; }
+
+    if (input) input.disabled = true;
+    setNearStatus('Looking up “' + esc(q) + '”…', 'is-on');
+    geocodeRemote(q).then(function (place) {
+      if (input) input.disabled = false;
+      setPlace(place, true);
+    }).catch(function (err) {
+      if (input) input.disabled = false;
+      setNearStatus('Could not find “' + esc(q) + '”. ' + esc(err.message || '') +
+        ' Try a suburb name, or “street, suburb”.', 'is-error');
+    });
   }
 
   // ------------------------------------------------------------- utilities
@@ -245,6 +493,7 @@
     }
     S.today = Math.max(0, todayIdx);
     renderFoot();
+    renderNear();
   }
 
   function renderFoot() {
@@ -396,11 +645,22 @@
       return;
     }
 
-    // Order by the next session still to come, so the page reads as a schedule.
+    // Order by distance when a location is set, otherwise by the next session
+    // still to come, so the page reads as a schedule.
     var order = Array.from(groups.keys());
-    order.sort(function (a, b) {
-      return nextTime(groups.get(a)) - nextTime(groups.get(b));
-    });
+    if (S.place) {
+      order.sort(function (a, b) {
+        var da = nearestKmOf(groups.get(a));
+        var db = nearestKmOf(groups.get(b));
+        if (da == null) da = Infinity;
+        if (db == null) db = Infinity;
+        return da - db || nextTime(groups.get(a)) - nextTime(groups.get(b));
+      });
+    } else {
+      order.sort(function (a, b) {
+        return nextTime(groups.get(a)) - nextTime(groups.get(b));
+      });
+    }
 
     var html = head + '<div class="films">';
     for (var k = 0; k < order.length; k++) {
@@ -457,6 +717,14 @@
     var meta = venueCount + (venueCount === 1 ? ' cinema' : ' cinemas');
     if (film[3]) meta += ' · ' + film[3];
     if (film[4]) meta += ' · ' + film[4] + ' min';
+    if (S.place) {
+      var nearKm = nearestKmOf(sorted);
+      if (nearKm != null) {
+        // Distance leads the meta line: it is the sort key here, and on a
+        // narrow screen the tail of this line is what gets clipped.
+        meta = fmtKm(nearKm) + ' · ~' + driveMinutes(nearKm) + ' min · ' + meta;
+      }
+    }
 
     var poster = film[6]
       ? '<img class="poster" src="' + esc(film[6]) + '" alt="" loading="lazy" ' +
@@ -490,6 +758,12 @@
     }
     var order = Array.from(byVenue.keys());
     order.sort(function (a, b) {
+      if (S.place) {
+        var da = kmTo(a), db = kmTo(b);
+        if (da != null || db != null) {
+          return (da == null ? Infinity : da) - (db == null ? Infinity : db);
+        }
+      }
       return S.cinemas[a][0].localeCompare(S.cinemas[b][0]);
     });
 
@@ -499,9 +773,13 @@
       var times = byVenue.get(order[k]).slice().sort(function (a, b) {
         return S.rowMinute[a] - S.rowMinute[b];
       });
+      var nearKm = S.place ? kmTo(order[k]) : null;
       html += '<div class="venue">' +
         '<div class="venue-head"><span class="venue-name">' + esc(cinema[0]) + '</span>' +
         (cinema[2] ? '<span class="venue-sub">' + esc(cinema[2]) + '</span>' : '') +
+        (nearKm != null
+          ? '<span class="venue-dist">' + fmtKm(nearKm) + ' · ' + fmtDrive(nearKm) + '</span>'
+          : '') +
         '</div><div class="sessions">' + sessions(times) + '</div></div>';
     }
     return html;
@@ -582,6 +860,10 @@
     var dayOrder = Array.from(byDate.keys()).sort(function (a, b) { return a - b; });
 
     var facts = [];
+    if (S.place) {
+      var nearKm = nearestKmOf(rows);
+      if (nearKm != null) facts.push(fmtKm(nearKm) + ' away · ' + fmtDrive(nearKm));
+    }
     if (film[2]) facts.push(film[2]);
     if (film[3]) facts.push(film[3]);
     if (film[4]) facts.push(film[4] + ' min');
@@ -777,9 +1059,24 @@
     try {
       var saved = localStorage.getItem('cinemelb-theme');
       if (saved) document.documentElement.setAttribute('data-theme', saved);
+      var savedPlace = localStorage.getItem('cinemelb-place');
+      if (savedPlace) {
+        var p = JSON.parse(savedPlace);
+        if (p && typeof p.lat === 'number' && typeof p.lon === 'number') {
+          S.place = p;
+          var savedInput = document.getElementById('near-q');
+          if (savedInput) savedInput.value = p.name || '';
+        }
+      }
     } catch (e) { /* private mode */ }
 
     var input = document.getElementById('q');
+
+    document.getElementById('near-me').addEventListener('click', requestLocation);
+    document.getElementById('near-form').addEventListener('submit', submitNear);
+    document.getElementById('nearbar').addEventListener('click', function (event) {
+      if (event.target.closest('[data-near-clear]')) clearPlace();
+    });
 
     document.getElementById('search').addEventListener('submit', function (e) {
       e.preventDefault();

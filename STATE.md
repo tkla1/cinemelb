@@ -72,6 +72,16 @@ the built bundle and again against the live deploy):
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 
+**Location.** The SPA has a "Near me" bar: a typed suburb/address or the
+browser's geolocation, resolved against a `places` gazetteer in the bundle
+(83 landmarks + every venue suburb) with a Nominatim fallback for street
+addresses. With a place set, the day sorts by distance, each film leads with
+`1.6 km · ~4 min`, and every venue on a film page shows `km · ~min drive`.
+Distances are great-circle and time divides by 22 km/h (`DRIVE_KMH`), matching
+`cinemelb.geo.SPEED_KMH["drive"]` so the page and CLI agree. Verified in real
+Chrome via Playwright: permission grant, gazetteer hit, Nominatim lookup and
+"clear" all pass locally and on the deployed URL.
+
 ### Adapter coverage (venues / screenings)
 
 - hoyts 12 / 4,422 — JSON API, whole chain in one request

@@ -194,6 +194,17 @@ accessible-screening and chain filters, per-film pages with every remaining
 session grouped by day and venue, and title search with suggestions. Routing is
 hash-based, so a deep link never asks the host for a path.
 
+**"Near me"** takes either a typed suburb or address, or the browser's own
+location (`navigator.geolocation`, which needs HTTPS and your permission), then
+sorts the day by distance and shows `1.6 km · ~4 min drive` on each film and
+next to every venue. Suburbs and landmarks resolve from a gazetteer shipped in
+the bundle; anything else is looked up through OpenStreetMap's Nominatim, which
+is the only request the page makes to a third party. Distances are
+great-circle and drive times divide by 22 km/h — the same planning figure
+`cinemelb near` uses, so the page and the CLI agree. Typed places are
+remembered in `localStorage`; coordinates from the browser's location are kept
+in memory only and never written to disk.
+
 `_headers` gives the hashed assets a one-year immutable cache and the bundle
 five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare
 Pages answers unknown paths with `index.html`, and the app checks the data

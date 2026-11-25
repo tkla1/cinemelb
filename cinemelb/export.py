@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from .models import MELBOURNE_TZ
+from .geo import known_places
 from .store import Store
 
 #: The static shell shipped alongside the bundle.
@@ -247,6 +248,19 @@ def build_bundle(
     # Date first, then minute: a day's slice is contiguous and time-ordered.
     screening_rows.sort(key=lambda row: (row[0], row[2], row[3]))
 
+    # Gazetteer for the SPA's "near" box. The hard-coded landmarks are the
+    # places people type ("fed square", "brunswick"), and the registry's own
+    # suburbs cover anywhere a cinema sits. Anything else is looked up live.
+    places: dict[str, tuple[float, float]] = dict(known_places())
+    for c in cinemas:
+        suburb = (c.get("suburb") or "").strip().lower()
+        if suburb and c.get("latitude") is not None and suburb not in places:
+            places[suburb] = (float(c["latitude"]), float(c["longitude"]))
+    place_rows = [
+        [name, round(lat, 5), round(lon, 5)]
+        for name, (lat, lon) in sorted(places.items())
+    ]
+
     bundle: dict[str, Any] = {
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "counts": {
@@ -264,6 +278,7 @@ def build_bundle(
         "attrs": attr_sets,
         "screens": screens,
         "urls": urls,
+        "places": place_rows,
     }
     _validate(bundle)
     return bundle
@@ -271,6 +286,11 @@ def build_bundle(
 
 def _validate(bundle: dict[str, Any]) -> None:
     """Fail loudly on a dangling index rather than shipping a broken deploy."""
+    if not bundle.get("places"):
+        raise SystemExit("bundle has no places table — the SPA cannot geocode")
+    for name, lat, lon in bundle["places"]:
+        if not name or not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            raise SystemExit(f"bad place row: {name!r} {lat!r} {lon!r}")
     limits = {
         0: len(bundle["dates"]),
         1: len(bundle["films"]),

@@ -61,6 +61,27 @@ try {
 
 <div class="filters" id="filters"></div>
 
+<div class="nearbar" id="nearbar">
+  <div class="near-row">
+    <button class="near-me" id="near-me" type="button" title="Use my location">
+      <svg class="near-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+        <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
+        <circle cx="10" cy="10" r="2.1" fill="currentColor"/>
+        <path d="M10 1.2v3.1M10 15.7v3.1M1.2 10h3.1M15.7 10h3.1"
+              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+      </svg>
+      <span>Near me</span>
+    </button>
+    <form class="near-form" id="near-form" role="search" autocomplete="off">
+      <input id="near-q" type="text" name="near" spellcheck="false"
+             placeholder="or enter a suburb or address"
+             aria-label="Suburb or address, or use my location"
+             enterkeyhint="search">
+    </form>
+  </div>
+  <p class="near-status" id="near-status" role="status" aria-live="polite"></p>
+</div>
+
 <main class="main" id="main" tabindex="-1">
   <div class="loading">
     <div class="spinner" aria-hidden="true"></div>
