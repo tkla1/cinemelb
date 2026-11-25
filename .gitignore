@@ -7,6 +7,7 @@ data/cache/geocode.json
 
 # scratch: downloaded pages and one-off inspection scripts
 _recon/
+scratch/
 
 # generated map exports
 *.html
