@@ -21,10 +21,50 @@ for each, and expose a tool that answers:
 | Coverage window | 25 Nov 2026 – 31 Jul 2027 |
 | Working adapters | hoyts, village, palace, reading, movingstory, nova, sun, acmi, imax, indy, lumos, waverley, generic_html |
 | Missing adapters | none |
-| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,serve}` |
+| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,serve,export}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
+| Static site | **https://cinemelb.pages.dev** — `python -m cinemelb export` → Cloudflare Pages |
 | Tests | 45 pass (1 skipped); `python -m unittest discover -s tests` |
 | Verification | `python scripts/verify.py` — 51/51 checks pass |
+
+### Static site
+
+`cinemelb export --out dist` writes a self-contained SPA: `index.html`, two
+content-hashed assets, `_headers`, `robots.txt`, and `data/bundle.json`
+(19,057 sessions · 393 films · 58 cinemas · through 31 Jul 2027; 1.8 MB raw,
+~170 KB gzipped). Deployed to the Cloudflare Pages project `cinemelb`:
+
+```bash
+python -m cinemelb refresh
+python -m cinemelb export --out dist
+npx wrangler pages deploy dist --project-name cinemelb --branch main
+```
+
+`dist/` is gitignored — it is a build artifact of `data/cinemelb.sqlite3`.
+`cinemelb/web/` is the source shell and is committed (`.gitignore` had a blanket
+`*.html` rule that silently excluded the shell's `index.html`; there is now an
+exception for `cinemelb/web/*.html`).
+
+Bugs found and fixed while finishing the SPA (all verified in a browser against
+the built bundle and again against the live deploy):
+
+1. `boot()` called `tickClock()` before `loadBundle()`, and `tickClock` read
+   `S.bundle.dates` — the page threw on first paint and never loaded the data.
+2. The chain filter read `.chain` on a cinema **row array** (always `undefined`),
+   so choosing any chain emptied the page.
+3. `isPast()` only considered today's rows, so yesterday's sessions still
+   appeared in a film's "all sessions" list. It now compares the date index.
+4. `render()` read `S.route` after rendering the rail, leaving the highlighted
+   day one click behind.
+5. Replaced the stylesheet, which had been written for an older `app.js` and no
+   longer matched the markup (the rewrite died mid-step; see Git below).
+6. Smaller: duplicate start times in the card time row, duplicated session
+   notes (`IMAX 3D … 3D`), "nothing left today" shown when a filter hid the
+   sessions, missing `#foot-meta` counts, no-op suggestion list, no `/` focus
+   shortcut, low-contrast active day in light mode.
+
+A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
+hosting experiment; it is unreferenced and can be deleted from the dashboard.
 
 ### Adapter coverage (venues / screenings)
 

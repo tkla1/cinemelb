@@ -11,6 +11,8 @@ _recon/
 # generated map exports
 *.html
 !data/**/*.html
+# ...but the SPA shell is source, not an export
+!cinemelb/web/*.html
 
 __pycache__/
 *.py[cod]

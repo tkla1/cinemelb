@@ -156,6 +156,50 @@ Server-rendered, no JavaScript, no CDN: the same queries as the CLI in a
 browser, with every view bookmarkable and the state carried in the URL. Useful
 when you want to hand someone a link rather than a terminal.
 
+### `export` — build the static site
+
+```bash
+python -m cinemelb export                        # writes ./dist
+python -m cinemelb export --out site             # elsewhere
+python -m cinemelb export --days 30              # next 30 days only
+python -m cinemelb export --synopsis 0           # keep full synopses
+```
+
+The output is a self-contained static site — one HTML page, two content-hashed
+assets, and `data/bundle.json` — that answers the same questions as the CLI with
+no server at all. It is live at **https://cinemelb.pages.dev**.
+
+Deploying it is one command, after a refresh so the times are current:
+
+```bash
+python -m cinemelb refresh
+python -m cinemelb export --out dist
+npx wrangler pages deploy dist --project-name cinemelb --branch main
+```
+
+`dist/` is generated, not committed: the bundle is a build artifact of whatever
+is in `data/cinemelb.sqlite3` at the time. `cinemelb/web/` is the source shell
+(`index.html`, `app.css`, `app.js`, `_headers`).
+
+The bundle is index-table shaped. A screening is nine integers pointing into
+shared tables (date, film, minute, cinema, format, attribute set, sold-out,
+ticket URL, screen), and the whole 19k-screening dataset is about 1.8 MB raw,
+or roughly 170 KB gzipped over the wire. Attribute spellings are canonicalised
+(`Closed Captioning Available` → `CC`), synopses are capped at 200 characters,
+and rows are sorted by date then minute so a day is a contiguous slice.
+
+The UI reads that one file once and then works in memory: a day by day rail,
+"leaves time to get there" (hides sessions starting within 20 minutes),
+accessible-screening and chain filters, per-film pages with every remaining
+session grouped by day and venue, and title search with suggestions. Routing is
+hash-based, so a deep link never asks the host for a path.
+
+`_headers` gives the hashed assets a one-year immutable cache and the bundle
+five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare
+Pages answers unknown paths with `index.html`, and the app checks the data
+file's `Content-Type` before parsing it so a misconfigured deploy fails loudly
+instead of "parsing" an HTML error page as JSON.
+
 `--json` is a global flag and goes **before** the command:
 
 ```bash

@@ -1,0 +1,13 @@
+# Cloudflare Pages serves the SPA shell for every path. Hash routing means the
+# app never requests a deep path, but this keeps any hand-typed URL working.
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/data/bundle.json
+  Cache-Control: public, max-age=300, must-revalidate
+  Content-Type: application/json; charset=utf-8
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin

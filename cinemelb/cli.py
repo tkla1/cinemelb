@@ -861,6 +861,31 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @app.command()
+def export(
+    ctx: typer.Context,
+    out: str = typer.Option("dist", "--out", "-o", help="Directory to write the static site"),
+    days: Optional[int] = typer.Option(None, "--days", help="Limit to the next N days"),
+    synopsis: int = typer.Option(200, "--synopsis", help="Synopsis character cap (0 = full)"),
+    no_urls: bool = typer.Option(False, "--no-urls", help="Drop ticket URLs (smaller bundle)"),
+) -> None:
+    """Build the static SPA site into a directory, ready to deploy."""
+    from .export import build_bundle, write_site
+
+    store = _store(ctx)
+    bundle = build_bundle(store, days=days, synopsis_cap=synopsis, include_urls=not no_urls)
+    path = write_site(bundle, out)
+
+    payload = (path / "data" / "bundle.json").stat().st_size
+    counts = bundle["counts"]
+    console.print(
+        f"[bold]Exported[/bold] {counts['screenings']:,} sessions · "
+        f"{counts['films']} films · {counts['cinemas']} cinemas · "
+        f"{counts['dates']} dates"
+    )
+    console.print(f"  bundle  {payload / 1024:,.0f} KB  →  {path}")
+
+
+@app.command()
 def serve(
     ctx: typer.Context,
     host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
