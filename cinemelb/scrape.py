@@ -62,13 +62,22 @@ class RefreshReport:
         )
 
 
-def load_registry(path: Path | None = None) -> list[dict]:
+def load_registry(path: Path | None = None, *, include_inactive: bool = False) -> list[dict]:
+    """Registry rows, active venues only unless ``include_inactive``.
+
+    The default is what a refresh should scrape.  ``include_inactive`` exists so
+    the store can be kept in sync: the registry's ``active`` flag has to reach
+    the database, otherwise a venue marked dormant stays visible in
+    ``cinemelb cinemas`` forever because the row was never updated.
+    """
     p = Path(path or REGISTRY_PATH)
     if not p.exists():
         raise FileNotFoundError(
             f"registry not found at {p} — run scripts/harvest_registry.py first"
         )
     rows = json.loads(p.read_text(encoding="utf-8"))
+    if include_inactive:
+        return rows
     return [r for r in rows if r.get("active", True)]
 
 
@@ -124,9 +133,11 @@ def refresh(
 ) -> RefreshReport:
     """Fetch sessions for every (selected) venue and write them to the store."""
     started = datetime.now(timezone.utc)
-    all_rows = load_registry(registry_path)
+    # ``all_rows`` includes inactive venues so the store's ``active`` flag stays
+    # in sync with the registry; ``rows`` is what actually gets scraped.
+    all_rows = load_registry(registry_path, include_inactive=True)
     apply_overrides(all_rows)
-    rows = all_rows
+    rows = [r for r in all_rows if r.get("active", True)]
 
     if only:
         def matches(row: dict) -> bool:

@@ -155,6 +155,29 @@ def _empty(message: str) -> None:
     console.print(f"[dim]{message}[/dim]")
 
 
+def _screening_count(store: Store, film_key: str) -> int:
+    return len(store.screenings(film_key=film_key))
+
+
+def _best_alternative(store: Store, title: str,
+                      *, skip: str) -> tuple[str, str, int] | None:
+    """The most-screened similarly-titled film other than ``skip``.
+
+    Used only to hint, never to change the answer: "dune" resolves exactly to
+    the 1984/2021 "Dune" while "Dune: Part Three" is the film playing
+    everywhere, and quietly answering the smaller question is the confusing
+    failure this guards against.
+    """
+    best: tuple[str, str, int] | None = None
+    for key, name in Q.resolve_film(store, title):
+        if key == skip:
+            continue
+        count = _screening_count(store, key)
+        if best is None or count > best[2]:
+            best = (key, name, count)
+    return best
+
+
 def _freshness(store: Store) -> None:
     """Warn when results are built on stale scrape data.
 
@@ -262,7 +285,8 @@ def film(
     chain: Optional[list[str]] = typer.Option(None, "--chain", help="e.g. palace, hoyts"),
     fmt: Optional[list[str]] = typer.Option(None, "--format", help="e.g. 70mm, imax"),
     accessible: bool = typer.Option(False, "--accessible", help="Only CC/AD sessions"),
-    limit: int = typer.Option(40, "--limit", "-l"),
+    limit: int = typer.Option(40, "--limit", "-l",
+                              help="Max sessions; each venue is represented first"),
     by_cinema: bool = typer.Option(True, "--group/--list", help="Group results by cinema"),
     similar: bool = typer.Option(False, "--similar",
                                  help="Also include similarly-titled films"),
@@ -289,10 +313,22 @@ def film(
         return
 
     best = matches[0][1]
+    others = [t for _, t in Q.resolve_film(store, title)[1:4]]
     if normalise_title(best) != normalise_title(title):
-        others = [t for _, t in Q.resolve_film(store, title)[1:3]]
         hint = f" [dim](also: {', '.join(others)} — add --similar)[/dim]" if others else ""
         console.print(f"[dim]Matched:[/dim] [white]{best}[/white]{hint}")
+    elif others:
+        # An exact title match is not always the film the user means: "dune"
+        # matches the 1984/2021 "Dune" exactly, while "Dune: Part Three" is
+        # playing at 44 venues.  Say so instead of quietly answering the
+        # smaller question — the user can still pass --similar to widen it.
+        chosen = _screening_count(store, matches[0][0])
+        rival = _best_alternative(store, title, skip=matches[0][0])
+        if rival and rival[2] >= max(chosen * 3, chosen + 20):
+            console.print(
+                f"[dim]Also showing:[/dim] [white]{rival[1]}[/white] "
+                f"[dim]({rival[2]} screenings — `cinemelb film {rival[1]!r}`)[/dim]"
+            )
 
     if not hits:
         _empty("No screenings matched those filters.")
@@ -302,21 +338,25 @@ def film(
         _show_hits(hits, show_distance=bool(origin))
         return
 
-    # group by film -> cinema -> times
+    # Group by film_key, not by the upstream title string: IMAX calls the same
+    # film "DUNE: PART THREE - IMAX 70MM" while everyone else calls it "Dune:
+    # Part Three", and splitting the answer into two headings hides the fact
+    # that they are one film.  The presentation difference is already carried
+    # by each screening's format, shown in the time list.
     grouped: dict[tuple[str, str], list[Q.Hit]] = {}
     for h in hits:
-        grouped.setdefault((h.screening["film_title"], h.cinema["id"]), []).append(h)
+        grouped.setdefault((h.screening["film_key"], h.cinema["id"]), []).append(h)
 
     current_film = None
     current_cinema = None
-    for (film_title, _), group in sorted(
+    for (film_key, _), group in sorted(
         grouped.items(),
         key=lambda kv: (kv[0][0], kv[1][0].distance_km if kv[1][0].distance_km is not None else 999,
                         kv[1][0].cinema["name"]),
     ):
         head = group[0]
-        if film_title != current_film:
-            meta = store.film(head.screening["film_key"]) or {}
+        meta = store.film(film_key) or {}
+        if film_key != current_film:
             bits = []
             if meta.get("rating"):
                 bits.append(meta["rating"])
@@ -325,8 +365,9 @@ def film(
             if meta.get("genres"):
                 bits.append(" / ".join(meta["genres"][:3]))
             suffix = f"  [dim]{' · '.join(bits)}[/dim]" if bits else ""
-            console.print(f"\n[bold white]{film_title}[/bold white]{suffix}")
-            current_film = film_title
+            display_title = meta.get("title") or head.screening["film_title"]
+            console.print(f"\n[bold white]{display_title}[/bold white]{suffix}")
+            current_film = film_key
             current_cinema = None
         if head.cinema["id"] != current_cinema:
             dist = f"  [magenta]{format_distance(head.distance_km)}[/magenta]" \

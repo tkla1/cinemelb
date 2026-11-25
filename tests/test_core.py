@@ -77,6 +77,22 @@ class TestModels(unittest.TestCase):
     def test_film_key_stable(self):
         self.assertEqual(film_key("Dune: Part Three"), film_key("dune part three"))
 
+    def test_curly_apostrophe_same_key_as_straight(self):
+        """Regression: the ASCII encode used to run *before* the quote fold.
+
+        U+2019 is not decomposed by NFKD, so ``encode("ascii", "ignore")``
+        dropped it while a straight apostrophe became a space.  "Disney’s
+        Hexed" therefore keyed as ``disneys-hexed`` and "Disney's Hexed" as
+        ``disney-s-hexed`` — the same film split into two catalogue entries.
+        """
+        self.assertEqual(film_key("Disney\u2019s Hexed"), film_key("Disney's Hexed"))
+        self.assertEqual(
+            normalise_title("Who\u2019s Afraid of Virginia Woolf?"),
+            normalise_title("Who's Afraid of Virginia Woolf?"),
+        )
+        # Curly double quotes and the en dash must fold too.
+        self.assertEqual(film_key("GIANT \u2013 The Play"), film_key("GIANT - The Play"))
+
     def test_make_screening_uses_melbourne_local_time(self):
         """A 7pm session must be 7pm in Melbourne, not 7pm UTC."""
         s = make_screening(
@@ -308,6 +324,85 @@ class TestQueries(unittest.TestCase):
         matches, hits = find_film(self.store, "dune")
         self.assertEqual(len(matches), 1)
         self.assertEqual({h.screening["film_title"] for h in hits}, {"Dune: Part Three"})
+
+    def test_limit_keeps_every_venue(self):
+        """A venue with one far-future session must survive the default limit.
+
+        Regression: results are time-sorted, so a global truncation let the
+        venues with the most sessions fill the list and dropped a venue whose
+        only session was weeks out — exactly how IMAX's 70mm run vanished from
+        "where is Dune: Part Three showing?".
+        """
+        from cinemelb.models import Cinema
+        from cinemelb.query import Filters, find_film
+
+        # 40 venues with many early sessions, plus one venue with a single
+        # session three weeks out.
+        venues = [
+            Cinema(id=f"v{i}", name=f"Venue {i}", suburb="Melbourne",
+                   latitude=-37.8, longitude=144.96)
+            for i in range(40)
+        ]
+        venues.append(Cinema(id="imax", name="IMAX Melbourne", suburb="Carlton",
+                             latitude=-37.80, longitude=144.96))
+        self.store.upsert_cinemas(venues)
+
+        for i in range(40):
+            rows = [
+                make_screening(cinema_id=f"v{i}", film_title="Dune: Part Three",
+                               local_naive=datetime(2026, 11, 26, 10 + h, 0), source="t")
+                for h in range(8)
+            ]
+            self.store.replace_screenings(f"v{i}", rows)
+        self.store.replace_screenings("imax", [
+            make_screening(cinema_id="imax", film_title="DUNE: PART THREE - IMAX 70MM",
+                           local_naive=datetime(2026, 12, 17, 19, 0), source="t",
+                           film_key_override="dune-part-three")])
+
+        _, hits = find_film(self.store, "dune", filters=Filters(limit=40))
+        self.assertIn("imax", {h.cinema["id"] for h in hits},
+                      "a venue whose only session is weeks out was truncated away")
+        # Every venue's first session is reserved, so 41 venues fit in 40 slots
+        # only if the cap is respected — it is a hard cap, so one venue may be
+        # left out, but the *breadth* must be near-total rather than 5 venues.
+        self.assertGreaterEqual(len({h.cinema["id"] for h in hits}), 20)
+
+
+class TestImaxAdapter(unittest.TestCase):
+    """Pure-function checks on the IMAX title handling (no network)."""
+
+    def test_presentation_suffix_stripped(self):
+        from cinemelb.adapters.imax import _base_title
+
+        cases = {
+            "DUNE: PART THREE - IMAX 70MM": "DUNE: PART THREE",
+            "DUNE: PART THREE - 4K PRESENTATION": "DUNE: PART THREE",
+            "THE ODYSSEY - IMAX 70MM PRESENTATION": "THE ODYSSEY",
+            "Dune: Part Three": "Dune: Part Three",
+            "Wild Asia 3D": "Wild Asia 3D",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(title=raw):
+                self.assertEqual(_base_title(raw), expected)
+
+    def test_suffixed_title_keys_to_the_same_film(self):
+        """The whole point: IMAX's wording must not hide the venue."""
+        from cinemelb.adapters.imax import _base_title
+        from cinemelb.models import film_key
+
+        self.assertEqual(
+            film_key(_base_title("DUNE: PART THREE - IMAX 70MM")),
+            film_key("Dune: Part Three"),
+        )
+
+    def test_format_detection(self):
+        from cinemelb.adapters.imax import _format_of
+
+        self.assertEqual(_format_of(["IMAX70MM"], False), "IMAX 70mm")
+        self.assertEqual(_format_of(["IMAX70MM"], True), "IMAX 70mm")
+        self.assertEqual(_format_of(["3D"], False), "IMAX 3D")
+        self.assertEqual(_format_of([], False), "IMAX")
+        self.assertEqual(_format_of(["IMAX 70MM PRESENTATION"], False), "IMAX 70mm")
 
 
 if __name__ == "__main__":

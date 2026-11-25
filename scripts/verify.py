@@ -192,11 +192,23 @@ def main() -> int:
                   f"{len(hits)} screenings across "
                   f"{len({h.cinema['id'] for h in hits})} venues")
 
+        # A bare "dune" resolves exactly to the 1984/2021 "Dune", which has only
+        # a handful of sessions.  The query that matters is the one the user
+        # means, so this also asserts that the *biggest* matching film is
+        # reachable and that breadth survives the default limit: a venue whose
+        # only session is weeks out (IMAX's 70mm run) must not be truncated
+        # away by the venues that simply have more sessions.
         matches, hits = find_film(store, "dune")
         if matches:
             check(bool(hits), "fuzzy lookup: 'dune'", f"{len(hits)} screenings")
         else:
             note("fuzzy lookup: 'dune'", "not in this week's catalogue")
+
+        matches, hits = find_film(store, "dune part three")
+        venues_hit = {h.cinema["id"] for h in hits}
+        check(bool(matches) and "imax-melbourne" in venues_hit,
+              "default limit keeps every venue", 
+              f"{len(hits)} screenings, {len(venues_hit)} venues, IMAX present")
 
         tomorrow = datetime.now(MELBOURNE_TZ).date() + timedelta(days=1)
         at_evening = films_at(store, tomorrow, start=time(19, 0), end=time(21, 0))

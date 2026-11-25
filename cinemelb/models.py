@@ -94,10 +94,14 @@ def normalise_title(title: str) -> str:
     if not title:
         return ""
     t = unicodedata.normalize("NFKD", title)
+    # Fold curly quotes to a straight apostrophe *before* the ASCII encode.
+    # Doing it after was a real bug: the encode drops U+2019 outright, so
+    # "Disney’s Hexed" became "disneys hexed" while "Disney's Hexed" became
+    # "disney s hexed" — the same film split into two catalogue keys.
+    t = re.sub(r"[\u2018\u2019\u201c\u201d]", "'", t)
     t = t.encode("ascii", "ignore").decode("ascii")
     t = t.lower()
     t = t.replace("&", " and ")
-    t = re.sub(r"[\u2018\u2019\u201c\u201d]", "'", t)
     t = _NON_ALNUM.sub(" ", t)
     t = _WS.sub(" ", t).strip()
 

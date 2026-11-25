@@ -173,14 +173,30 @@ class Store:
                     synopsis,poster_url,trailer_url,directors,aka)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(key) DO UPDATE SET
-                    title=excluded.title,
+                    -- IMAX publishes titles in upper case ("DUNE: PART THREE").
+                    -- An all-caps title must not overwrite a properly cased one
+                    -- from another chain, or the whole catalogue starts
+                    -- shouting.  SQLite's UPPER() makes "is this all caps?" a
+                    -- single comparison; a mixed-case title never equals its
+                    -- own upper-case form.
+                    title=CASE
+                        WHEN excluded.title = UPPER(excluded.title)
+                             AND films.title <> UPPER(films.title)
+                        THEN films.title
+                        ELSE excluded.title
+                    END,
                     year=COALESCE(excluded.year, films.year),
                     runtime_minutes=COALESCE(excluded.runtime_minutes, films.runtime_minutes),
                     rating=CASE WHEN excluded.rating<>'' THEN excluded.rating ELSE films.rating END,
                     genres=CASE WHEN excluded.genres<>'[]' THEN excluded.genres ELSE films.genres END,
                     synopsis=CASE WHEN excluded.synopsis<>'' THEN excluded.synopsis ELSE films.synopsis END,
                     poster_url=CASE WHEN excluded.poster_url<>'' THEN excluded.poster_url ELSE films.poster_url END,
-                    trailer_url=CASE WHEN excluded.trailer_url<>'' THEN excluded.trailer_url ELSE films.trailer_url END
+                    trailer_url=CASE WHEN excluded.trailer_url<>'' THEN excluded.trailer_url ELSE films.trailer_url END,
+                    aka=CASE
+                        WHEN excluded.aka<>'[]' AND films.aka='[]' THEN excluded.aka
+                        WHEN excluded.aka<>'[]' AND films.aka<>'[]' THEN films.aka
+                        ELSE films.aka
+                    END
                 """,
                 rows,
             )

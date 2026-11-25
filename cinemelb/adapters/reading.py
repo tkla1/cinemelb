@@ -244,6 +244,13 @@ class ReadingAdapter(Adapter):
                                 film_title=title,
                                 local_naive=local,
                                 source=self.name,
+                                # Reading leaves ``auditorium`` empty in this
+                                # feed, so two sessions of one film at the same
+                                # clock time (two rooms) land on one screening
+                                # id and the store keeps a single row.  Passing
+                                # the field anyway means screen names appear the
+                                # day Reading starts publishing them.
+                                screen=str(performance.get("auditorium") or ""),
                                 fmt=fmt,
                                 attributes=_attributes(performance),
                                 ticket_url=self._ticket_url(slug, performance),

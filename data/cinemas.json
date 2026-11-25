@@ -347,11 +347,13 @@
     "latitude": -37.8038,
     "longitude": 144.9705,
     "phone": "0396635454",
-    "website": "https://imaxmelbourne.com.au",
-    "booking_url": "",
+    "website": "https://web.imaxmelbourne.com.au",
+    "booking_url": "https://web.imaxmelbourne.com.au/",
     "screens": null,
     "source": "imax",
-    "source_ids": {},
+    "source_ids": {
+      "imax": "IMAX"
+    },
     "tags": [
       "imax",
       "large-format"

@@ -215,6 +215,48 @@ def resolve_film(store: Store, text: str) -> list[tuple[str, str]]:
 # the three queries
 # --------------------------------------------------------------------------- #
 
+def _limit_with_breadth(hits: list[Hit], limit: int, per_cinema: int = 8) -> list[Hit]:
+    """Truncate to ``limit`` sessions while guaranteeing every venue appears.
+
+    A plain ``hits[:limit]`` on a time-sorted list lets the venues with the most
+    sessions fill the whole result and drops a venue whose only session is weeks
+    out — exactly how IMAX's 70mm run vanished from "where is Dune: Part Three
+    showing?".  The question being answered is "which cinemas", so every venue's
+    earliest session is reserved first and only the remaining slots are filled
+    earliest-first.
+
+    When there are more venues than ``limit`` slots, the result may exceed
+    ``limit`` by up to the venue count: naming every venue is the point, and a
+    hard cap that silently omits a cinema is the bug this exists to prevent.
+    """
+    if limit <= 0 or len(hits) <= limit:
+        return hits[:limit]
+
+    first: dict[str, Hit] = {}
+    for hit in hits:
+        first.setdefault(hit.cinema["id"], hit)
+
+    keep: list[Hit] = list(first.values())
+    chosen = {id(h) for h in keep}
+    per_venue: dict[str, int] = {cid: 1 for cid in first}
+
+    # Fill the remaining slots earliest-first, respecting the per-venue cap.
+    for hit in hits:
+        if len(keep) >= limit:
+            break
+        if id(hit) in chosen:
+            continue
+        cid = hit.cinema["id"]
+        if per_venue.get(cid, 0) >= per_cinema:
+            continue
+        keep.append(hit)
+        chosen.add(id(hit))
+        per_venue[cid] = per_venue.get(cid, 0) + 1
+
+    keep.sort(key=lambda h: (h.screening["local_date"], h.screening["local_time"]))
+    return keep
+
+
 def find_film(
     store: Store,
     film_text: str,
@@ -222,6 +264,7 @@ def find_film(
     filters: Filters | None = None,
     origin: tuple[float, float] | None = None,
     include_similar: bool = False,
+    per_cinema: int = 8,
 ) -> tuple[list[tuple[str, str]], list[Hit]]:
     """Where is this film showing?  Returns (matches, hits).
 
@@ -258,7 +301,7 @@ def find_film(
     _decorate(hits, origin)
     hits = _sort(hits, origin, f)
     hits = _apply_distance_cap(hits, f)
-    return matches, hits[: f.limit]
+    return matches, _limit_with_breadth(hits, f.limit, per_cinema)
 
 
 def films_at(

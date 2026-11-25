@@ -168,19 +168,23 @@ python -m cinemelb --json trending | jq -r '.[] | "\(.cinema_count)\t\(.title)"'
 ## Coverage
 
 63 venues in greater Melbourne, including every independent and art-house
-cinema. Each venue is scraped through the adapter appropriate to its platform.
+cinema. 58 are active and **all 58 return live session data**; the 5 remaining
+registry rows are documented as dormant or non-cinema in the Limitations below.
 
 | Platform | Venues | How |
 |---|---|---|
 | Hoyts | 12 | JSON API — `/api/sessions` returns the whole chain in one ~9 MB request |
 | Village | 14 | same-origin `/api/algolia/sessions/hits?f.c=<cinemaId>` proxy (one call per venue) |
 | Palace (incl. The Astor, The Kino, Pentridge) | 9 | per-venue Next.js data payload |
-| Reading | 7 | SPA API at `prod-api.readingcinemas.com.au` — *blocked, see Limitations* |
-| Moving Story (Lido, Classic Elsternwick, Cameo Belgrave) | 3 | server-rendered HTML, one block per day |
+| Reading | 7 | SPA API at `prod-api.readingcinemas.com.au` — anonymous token from `/settings/1`, then Bearer auth |
+| Moving Story (Lido, Classic Elsternwick, Cameo Belgrave) | 3 | server-rendered HTML, date-addressed `/now-showing/<date>` pages |
 | Cinema Nova | 1 | `/films-by-date-<epoch>` server-rendered pages |
 | Sun Theatre Yarraville | 1 | WordPress pages with `?wp-cinema-day=N` |
 | ACMI | 1 | Nuxt `window.__NUXT__` payload |
-| IMAX Melbourne | 1 | own site |
+| IMAX Melbourne | 1 | Lumos SPA → Vista Connect OCAPI (`/film-screening-dates`, `/showtimes/by-business-date`) |
+| Indy-systems (Brunswick, Thornbury Picture House) | 2 | GraphQL `POST /graphql` |
+| Lumos/Vista (United Craigieburn) | 1 | `gasapi` business-date endpoint |
+| Waverley Cinemas | 1 | `/api/movie/playing-now` JSON |
 | Small independents | 9 | `generic_html` strategies (Veezi, JSON APIs, WordPress, HTML) |
 
 The independents in the registry include Cinema Nova, The Astor, Lido, Classic
@@ -265,32 +269,33 @@ python scripts/verify.py                   # live: adapters return real data
 Stated plainly, because a showtimes tool that hides its gaps sends you to a
 cinema for a session that does not exist.
 
-- **Coverage is 46 of 58 venues with live session data.** The remaining 12 are
-  a mix of genuinely hard and genuinely seasonal:
-  - **Reading (7 venues)** — the SPA's API (`prod-api.readingcinemas.com.au`)
-    rejects non-browser clients with 403. Needs a browser session or a
-    different endpoint.
-  - **IMAX Melbourne** — its session API
-    (`digital-api.imaxmelbourne.com.au/v2/experiences/get`) is behind
-    Cloudflare and 403s non-browser clients.
-  - **United Craigieburn, Waverley Cinemas** — JS-only booking widgets with no
-    discoverable HTTP endpoint.
-  - **Brunswick Picture House, Thornbury Picture House** — both run the
-    "indy-systems" booking platform, whose own GraphQL endpoint is currently
-    returning schema errors upstream.
-  - **Moonlight Cinema** — outdoor and seasonal; it opens 2 December, so an
-    empty result out of season is correct, not a failure.
-
-  Every one of these is listed in the venue registry with full address and
-  coordinates, so they still appear in `cinemelb cinemas` and in map exports —
-  they simply carry no session times yet. `cinemelb stats` shows per-adapter
-  health so the gaps are always visible.
-- **Seasonal venues** (Moonlight, rooftop/outdoor screens) legitimately return
+- **Coverage is all 58 active venues with live session data.** The last gap
+  closed when IMAX Melbourne turned out to be reachable: its marketing site
+  blocks non-browser clients, but the Vista Connect OCAPI behind it
+  (`digital-api.imaxmelbourne.com.au`) answers plain HTTP with the bearer token
+  in the page's own hydration blob. The deprecated `/v2/experiences` route is
+  the one that stays Cloudflare-403, which is why the venue looked unscrapable.
+  IMAX does rate-limit aggressively (Cloudflare 1015 after ~40 rapid requests),
+  so the adapter crawls its business days through the project's throttled
+  `Http` client and reports a 429 as a failed day rather than "no sessions".
+- **Five registry rows are marked inactive** because they are not active
+  cinemas: `rooftop-cinema` (stale site, no programme), `forum-theatre`
+  (live-music venue), `capitol-theatre` (the registered URL is the Sydney
+  Capitol; the Melbourne one is a retail arcade), `thornbury-theatre`
+  (live-music venue), and `la-trobe-university-cinema` (no public programme).
+  Each carries a `notes` field with the evidence. They are excluded from
+  refresh and from query results.
+- **Seasonal venues** (Moonlight, outdoor screens) legitimately return
   nothing out of season.
 - **The registry covers greater Melbourne.** Regional Victorian cinemas
   (Ballarat, Bendigo, Geelong, Gippsland) are outside scope. Event Cinemas has
   no Victorian venues beyond the outdoor Moonlight site, so its absence as a
   chain is correct.
+- **Title spelling varies by chain.** The same film can be listed as "Hexed"
+  at Village and "Disney's Hexed" at Palace/Moving Story. Queries resolve one
+  title string per film; pass `--fuzzy` to widen a search when a title looks
+  fragmented. Curly-vs-straight apostrophes and en-dashes are normalised to one
+  key, so "Disney’s Hexed" and "Disney's Hexed" already collapse.
 - **Upstream sites change.** These are scrapers against undocumented endpoints;
   a redesign breaks an adapter. `cinemelb doctor` and `python scripts/verify.py`
   exist to make that failure loud rather than silent.
