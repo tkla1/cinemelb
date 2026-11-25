@@ -398,6 +398,14 @@ def main() -> int:
             print(f"  ok  {row['id']:<38} {row['suburb'] or '?':<18} "
                   f"{row['latitude']}, {row['longitude']}")
 
+    # Cinemas Flicks does not list (rooftops, universities, theatre-screens).
+    # These carry hand-checked coordinates rather than a Flicks page.
+    for venue in MANUAL_VENUES:
+        row = _manual_row(venue, existing)
+        rows.append(row)
+        print(f"  ok  {row['id']:<38} {row['suburb'] or '?':<18} "
+              f"{row['latitude']}, {row['longitude']}  (manual)")
+
     rows.sort(key=lambda r: (r["suburb"] or "", r["name"]))
 
     print(f"\nparsed {len(rows)} venues, {len(failures)} failures")
@@ -424,6 +432,117 @@ def _infer_chain(name: str) -> str:
         if chain in low:
             return chain.strip().capitalize() if chain != "imax" else "IMAX"
     return ""
+
+
+#: Venues that are real cinemas but that Flicks does not list, so they cannot
+#: be harvested from the region pages.  Coordinates are hand-checked against
+#: OpenStreetMap; the address strings are the venues' own.  These are mostly
+#: occasional or seasonal screens (a rooftop, a university cinema, a theatre
+#: that runs films between live shows), so several will legitimately have no
+#: scheduled screenings at any given moment — the registry records them, the
+#: adapter layer decides whether a schedule exists.
+MANUAL_VENUES: list[dict] = [
+    {
+        "id": "rooftop-cinema",
+        "name": "Rooftop Cinema",
+        "chain": "",
+        "address": "252 Swanston Street, Melbourne 3000",
+        "suburb": "Melbourne",
+        "postcode": "3000",
+        "latitude": -37.81204,
+        "longitude": 144.96530,
+        "website": "https://rooftopcinema.com.au",
+        "source": "generic_html",
+        "tags": ["outdoor", "seasonal", "arthouse"],
+        "notes": "Open-air screen on the roof of Curtin House; summer season only.",
+    },
+    {
+        "id": "capitol-theatre",
+        "name": "The Capitol",
+        "chain": "",
+        "address": "113 Swanston Street, Melbourne 3000",
+        "suburb": "Melbourne",
+        "postcode": "3000",
+        "latitude": -37.81499,
+        "longitude": 144.96605,
+        "website": "https://www.capitoltheatre.com.au",
+        "source": "generic_html",
+        "tags": ["heritage", "arthouse", "festival"],
+        "notes": "RMIT's restored 1924 cinema; screens films and festivals.",
+    },
+    {
+        "id": "forum-theatre",
+        "name": "Forum Theatre",
+        "chain": "",
+        "address": "154 Flinders Street, Melbourne 3000",
+        "suburb": "Melbourne",
+        "postcode": "3000",
+        "latitude": -37.81644,
+        "longitude": 144.96938,
+        "website": "https://www.forumtheatre.com.au",
+        "source": "generic_html",
+        "tags": ["heritage", "festival"],
+        "notes": "Primarily a live venue; runs film festivals and screenings.",
+    },
+    {
+        "id": "la-trobe-university-cinema",
+        "name": "La Trobe University Cinema",
+        "chain": "",
+        "address": "La Trobe University, Bundoora 3083",
+        "suburb": "Bundoora",
+        "postcode": "3083",
+        "latitude": -37.71694,
+        "longitude": 145.04398,
+        "website": "https://www.latrobe.edu.au",
+        "source": "generic_html",
+        "tags": ["university", "arthouse"],
+        "notes": "Campus cinema; programme is term-dependent.",
+    },
+    {
+        "id": "thornbury-theatre",
+        "name": "Thornbury Theatre",
+        "chain": "",
+        "address": "859 High Street, Thornbury 3071",
+        "suburb": "Thornbury",
+        "postcode": "3071",
+        "latitude": -37.75466,
+        "longitude": 145.00112,
+        "website": "https://www.thornburytheatre.com.au",
+        "source": "generic_html",
+        "tags": ["heritage", "festival"],
+        "notes": "Live music venue that also runs film nights.",
+    },
+]
+
+
+def _manual_row(venue: dict, existing: dict) -> dict:
+    """Shape a MANUAL_VENUES entry into the same row the harvester emits."""
+    prev = existing.get(venue["id"], {})
+    row = {
+        "id": venue["id"],
+        "name": venue["name"],
+        "chain": venue.get("chain", ""),
+        "address": venue.get("address", ""),
+        "suburb": venue.get("suburb", ""),
+        "postcode": venue.get("postcode", ""),
+        "state": "VIC",
+        "latitude": venue.get("latitude"),
+        "longitude": venue.get("longitude"),
+        "phone": venue.get("phone", ""),
+        "website": venue.get("website", ""),
+        "booking_url": "",
+        "screens": prev.get("screens"),
+        "source": venue.get("source", "generic_html"),
+        "source_ids": prev.get("source_ids", {}),
+        "tags": sorted(set(prev.get("tags", [])) | set(venue.get("tags", []))),
+        "notes": venue.get("notes", prev.get("notes", "")),
+        "region": "melbourne",
+        "metro": True,
+        "active": True,
+        "flicks_slug": "",
+    }
+    return row
+
 
 
 if __name__ == "__main__":

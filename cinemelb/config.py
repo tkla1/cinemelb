@@ -19,6 +19,14 @@ USER_AGENT = os.environ.get(
     "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
 )
 
+#: Nominatim's usage policy rejects a browser User-Agent outright (it answers
+#: HTTP 629 with an HTML error page), so geocoding needs its own honest UA.
+#: The browser UA stays for the cinema sites, which sometimes gate on it.
+GEOCODER_USER_AGENT = os.environ.get(
+    "CINEMELB_GEOCODER_UA",
+    "cinemelb/1.0 (Melbourne cinema showtimes; +https://github.com/cinemelb)",
+)
+
 #: Metro Melbourne bounding box — used to decide whether a venue is "in
 #: Melbourne" when a source returns the whole state.
 MELBOURNE_BOUNDS = {

@@ -260,6 +260,32 @@
     "metro": true
   },
   {
+    "id": "la-trobe-university-cinema",
+    "name": "La Trobe University Cinema",
+    "chain": "",
+    "address": "La Trobe University, Bundoora 3083",
+    "suburb": "Bundoora",
+    "postcode": "3083",
+    "state": "VIC",
+    "latitude": -37.71694,
+    "longitude": 145.04398,
+    "phone": "",
+    "website": "https://www.latrobe.edu.au",
+    "booking_url": "",
+    "screens": null,
+    "source": "generic_html",
+    "source_ids": {},
+    "tags": [
+      "arthouse",
+      "university"
+    ],
+    "notes": "Campus cinema; programme is term-dependent.",
+    "region": "melbourne",
+    "metro": true,
+    "active": true,
+    "flicks_slug": ""
+  },
+  {
     "id": "reading-burwood-brickworks",
     "name": "Reading Burwood Brickworks",
     "chain": "Reading",
@@ -940,6 +966,32 @@
     "metro": true
   },
   {
+    "id": "forum-theatre",
+    "name": "Forum Theatre",
+    "chain": "",
+    "address": "154 Flinders Street, Melbourne 3000",
+    "suburb": "Melbourne",
+    "postcode": "3000",
+    "state": "VIC",
+    "latitude": -37.81644,
+    "longitude": 144.96938,
+    "phone": "",
+    "website": "https://www.forumtheatre.com.au",
+    "booking_url": "",
+    "screens": null,
+    "source": "generic_html",
+    "source_ids": {},
+    "tags": [
+      "festival",
+      "heritage"
+    ],
+    "notes": "Primarily a live venue; runs film festivals and screenings.",
+    "region": "melbourne",
+    "metro": true,
+    "active": true,
+    "flicks_slug": ""
+  },
+  {
     "id": "hoyts-melbourne-central",
     "name": "Hoyts Melbourne Central",
     "chain": "Hoyts",
@@ -989,6 +1041,62 @@
     "flicks_slug": "palace-kino-cinemas",
     "active": true,
     "metro": true
+  },
+  {
+    "id": "rooftop-cinema",
+    "name": "Rooftop Cinema",
+    "chain": "",
+    "address": "252 Swanston Street, Melbourne 3000",
+    "suburb": "Melbourne",
+    "postcode": "3000",
+    "state": "VIC",
+    "latitude": -37.81204,
+    "longitude": 144.9653,
+    "phone": "",
+    "website": "https://rooftopcinema.com.au",
+    "booking_url": "",
+    "screens": null,
+    "source": "hoyts",
+    "source_ids": {
+      "hoyts": "MCECIN"
+    },
+    "tags": [
+      "arthouse",
+      "outdoor",
+      "seasonal"
+    ],
+    "notes": "Open-air screen on the roof of Curtin House; summer season only.",
+    "region": "melbourne",
+    "metro": true,
+    "active": true,
+    "flicks_slug": ""
+  },
+  {
+    "id": "capitol-theatre",
+    "name": "The Capitol",
+    "chain": "",
+    "address": "113 Swanston Street, Melbourne 3000",
+    "suburb": "Melbourne",
+    "postcode": "3000",
+    "state": "VIC",
+    "latitude": -37.81499,
+    "longitude": 144.96605,
+    "phone": "",
+    "website": "https://www.capitoltheatre.com.au",
+    "booking_url": "",
+    "screens": null,
+    "source": "generic_html",
+    "source_ids": {},
+    "tags": [
+      "arthouse",
+      "festival",
+      "heritage"
+    ],
+    "notes": "RMIT's restored 1924 cinema; screens films and festivals.",
+    "region": "melbourne",
+    "metro": true,
+    "active": true,
+    "flicks_slug": ""
   },
   {
     "id": "reading-melton",
@@ -1439,6 +1547,32 @@
     "flicks_slug": "thornbury-picture-house",
     "active": true,
     "metro": true
+  },
+  {
+    "id": "thornbury-theatre",
+    "name": "Thornbury Theatre",
+    "chain": "",
+    "address": "859 High Street, Thornbury 3071",
+    "suburb": "Thornbury",
+    "postcode": "3071",
+    "state": "VIC",
+    "latitude": -37.75466,
+    "longitude": 145.00112,
+    "phone": "",
+    "website": "https://www.thornburytheatre.com.au",
+    "booking_url": "",
+    "screens": null,
+    "source": "generic_html",
+    "source_ids": {},
+    "tags": [
+      "festival",
+      "heritage"
+    ],
+    "notes": "Live music venue that also runs film nights.",
+    "region": "melbourne",
+    "metro": true,
+    "active": true,
+    "flicks_slug": ""
   },
   {
     "id": "village-knox",

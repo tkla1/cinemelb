@@ -150,7 +150,7 @@ def geocode(
     try:
         import requests
 
-        from .config import USER_AGENT
+        from .config import GEOCODER_USER_AGENT
 
         r = requests.get(
             "https://nominatim.openstreetmap.org/search",
@@ -160,10 +160,13 @@ def geocode(
                 "limit": 1,
                 "countrycodes": "au",
             },
-            headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": GEOCODER_USER_AGENT},
             timeout=15,
         )
-        r.raise_for_status()
+        # Nominatim answers 629 with an HTML block page rather than JSON when
+        # it dislikes the client; treat anything but 200 as "no answer".
+        if r.status_code != 200:
+            return None
         rows = r.json()
         if rows:
             lat, lon = float(rows[0]["lat"]), float(rows[0]["lon"])
