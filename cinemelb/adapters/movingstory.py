@@ -41,8 +41,12 @@ _TITLE = re.compile(
 )
 
 #: One session anchor: carries the ticket URL, numeric id, title and genres.
+#: The href is OPTIONAL: a sold-out session renders as a bare
+#: ``<a class="Link sessions-link" data-id="..." ...>`` with no href at all,
+#: so requiring one silently dropped every sold-out performance.
 _SESSION = re.compile(
-    r'<a class="Link sessions-link"\s+href="([^"]*)"'
+    r'<a class="Link sessions-link"'
+    r'(?:\s+href="([^"]*)")?'
     r'(?:\s+data-id="([^"]*)")?'
     r'(?:\s+data-name="([^"]*)")?'
     r'(?:\s+data-genre="([^"]*)")?'
@@ -155,6 +159,7 @@ class MovingStoryAdapter(Adapter):
                     continue
 
                 attrs = [_unescape(a) for a in _ATTR.findall(body) if _unescape(a)]
+                sold_out = any("sold out" in a.lower() for a in attrs)
                 ticket = ""
                 if href:
                     ticket = _unescape(href).replace("&amp;", "&")
@@ -179,5 +184,6 @@ class MovingStoryAdapter(Adapter):
                         screen="",
                         attributes=attrs,
                         ticket_url=ticket,
+                        sold_out=sold_out,
                     )
                 )

@@ -17,30 +17,30 @@ for each, and expose a tool that answers:
 |---|---|
 | Registry | 63 rows in `data/cinemas.json` (58 active) |
 | Venues with live data | **58 of 58 active** |
-| Screenings | 19,159 |
+| Screenings | 19,091 |
 | Coverage window | 25 Nov 2026 – 31 Jul 2027 |
 | Working adapters | hoyts, village, palace, reading, movingstory, nova, sun, acmi, imax, indy, lumos, waverley, generic_html |
 | Missing adapters | none |
 | CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,serve}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
-| Tests | 41 pass (1 skipped); `python -m unittest discover -s tests` |
+| Tests | 43 pass (1 skipped); `python -m unittest discover -s tests` |
 | Verification | `python scripts/verify.py` — 38/38 checks pass |
 
 ### Adapter coverage (venues / screenings)
 
 - hoyts 12 / 4,422 — JSON API, whole chain in one request
-- village 14 / 6,734 — Algolia proxy `/api/algolia/sessions/hits?f.c=<id>`
-- palace 9 / 2,823 — `_next/data` JSON keyed by slug
-- reading 7 / 2,203 — Cognito Bearer from `/settings`, then `/films?cinemaId=`
-- movingstory 3 / 991 — date-addressed `/now-showing/<date>` pages
-- nova 1 / 535 — `/films-by-date-<epoch>` HTML
-- sun 1 / 247 — `?wp-cinema-day=N` HTML
+- village 14 / 6,711 — Algolia proxy `/api/algolia/sessions/hits?f.c=<id>`
+- palace 9 / 2,800 — `_next/data` JSON keyed by slug
+- reading 7 / 2,193 — Cognito Bearer from `/settings`, then `/films?cinemaId=`
+- movingstory 3 / 990 — date-addressed `/now-showing/<date>` pages
+- nova 1 / 530 — `/films-by-date-<epoch>` HTML
+- sun 1 / 245 — `?wp-cinema-day=N` HTML
 - **imax 1 / 175** — Vista OCAPI (`/sites`, `/film-screening-dates`, `/showtimes/by-business-date/<day>`)
-- indy 2 / 97 — Indy Systems GraphQL
-- lumos 1 / 430 — United Craigieburn gasapi
+- indy 2 / 95 — Indy Systems GraphQL
+- lumos 1 / 429 — United Craigieburn gasapi
 - waverley 1 / 200 — Flicks white-label JSON
 - acmi 1 / 34 — Nuxt `__NUXT__` devalue blob
-- generic_html 10 / 268 — Veezi / wp-cinema / JSON-LD fallbacks
+- generic_html 10 / 267 — Veezi / wp-cinema / JSON-LD fallbacks
 
 ## IMAX — how the "blocked" venue was actually reachable
 
@@ -86,9 +86,17 @@ than an empty one.
    `/now-showing/<date>` pages are parsed (recovers JIFF, repertory, one-offs).
 3. **HTML entities** — `Disney&#x2019;s Hexed` now decoded to `Disney's Hexed`.
 4. **Title fragmentation** — entity fix removes the `disney-and-x2019-s-hexed` key split.
+5. **Sold-out sessions were dropped** — a sold-out performance renders as a bare
+   `<a class="Link sessions-link" data-id="..." ...>` with **no href**, and the
+   session regex required one. Every sold-out Moving Story session was silently
+   missing. The href is now optional and `sold_out` is set from the
+   `Attribute SoldOut` span. Confirmed by the Classic Live Comedy 20:00 session
+   on 2026-11-27, which is now stored with `sold_out=1`.
 
-Verified: Classic 26 Nov now has Videodrome 19:00, Tenzing 10:40, Buddy 15:20/21:30.
-Zero entity titles remain; zero mojibake.
+Verified by the independent auditor (`_recon/audit.py`, 40/40 samples pass):
+movingstory coverage is now **1/744 absent** (was 94/751) and 0 date-shifted.
+All four platforms audited (hoyts, village, palace, movingstory) are rated
+"Trustworthy".
 
 ## Git
 
@@ -113,3 +121,8 @@ baseline commit and hold no work — master is strictly ahead of them.
   itself calls.
 - A "recount" that disagrees with the adapter may be the broken instrument:
   a 429 read as an empty day made IMAX look like 175 vs 0.
+- A sold-out session may have **no booking link at all** — if the parser
+  requires an `href` on the session anchor, it silently drops every full house.
+- An auditor that re-uses a cached snapshot re-audits yesterday's database.
+  `_recon/audit.py` skipped regeneration whenever `audit_snapshot.json` existed,
+  so it kept reporting a 94/751 gap long after the adapter was fixed.

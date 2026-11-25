@@ -405,5 +405,65 @@ class TestImaxAdapter(unittest.TestCase):
         self.assertEqual(_format_of(["IMAX 70MM PRESENTATION"], False), "IMAX 70mm")
 
 
+class TestMovingStoryAdapter(unittest.TestCase):
+    """Sold-out sessions render without an href; they must still be stored."""
+
+    #: Verbatim shape of a sold-out session anchor on a Moving Story date page.
+    SOLD_OUT = (
+        '<li class="Stack">'
+        '<div class="Markup Movie" data-genres="">'
+        '<div class="Wrapper">'
+        '<a href="/movies/classic-live-comedy-featuring-bron-lewis" class="Image">'
+        '<img src="https://example.test/x.jpg" alt="" /></a>'
+        '<span class="Byline">Exempt</span>'
+        '<span class="Title"><a href="/movies/classic-live-comedy-featuring-bron-lewis">'
+        "Classic Live Comedy - Featuring Bron Lewis</a></span>"
+        "</div>"
+        '<div class="Tickets"><ul class="Sessions"><li>'
+        '<a class="Link sessions-link" data-id="134617" '
+        'data-name="Classic Live Comedy - Featuring Bron Lewis" '
+        'data-genre="Live Performance,Comedy">'
+        '<span class="Time">8:00 pm</span>'
+        '<span class="Attribute">LiveComedy</span>'
+        '<span class="Attribute SoldOut">Sold Out</span>'
+        "</a></li></ul></div></div></li>"
+    )
+
+    def _parse(self, markup: str):
+        from cinemelb.adapters.movingstory import MovingStoryAdapter
+        from cinemelb.adapters.base import AdapterOutput
+
+        adapter = MovingStoryAdapter()
+        out = AdapterOutput()
+        cinema = {"id": "classic-elsternwick", "website": "https://example.test"}
+        adapter._parse_day(markup, "2026-11-27", cinema, "https://example.test", out, set())
+        return out
+
+    def test_sold_out_session_without_href_is_stored(self):
+        out = self._parse(self.SOLD_OUT)
+        self.assertEqual(len(out.screenings), 1, "sold-out session was dropped")
+        s = out.screenings[0]
+        self.assertEqual(s.film_title, "Classic Live Comedy - Featuring Bron Lewis")
+        self.assertEqual(s.local_time, time(20, 0))
+        self.assertTrue(s.sold_out, "sold_out flag not set from the Sold Out attribute")
+        self.assertEqual(s.ticket_url, "", "no href means no ticket URL")
+
+    def test_normal_session_still_carries_ticket_url(self):
+        markup = self.SOLD_OUT.replace(
+            '<a class="Link sessions-link" data-id="134617"',
+            '<a class="Link sessions-link" href="/tickets?c=0000000002&amp;s=125521" '
+            'data-id="125521"',
+        ).replace(
+            '<span class="Attribute SoldOut">Sold Out</span>', ""
+        )
+        out = self._parse(markup)
+        self.assertEqual(len(out.screenings), 1)
+        s = out.screenings[0]
+        self.assertFalse(s.sold_out)
+        self.assertEqual(
+            s.ticket_url, "https://example.test/tickets?c=0000000002&s=125521"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
