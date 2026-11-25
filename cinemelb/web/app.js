@@ -653,6 +653,18 @@
       n.cinemas + ' cinemas' + dot +
       'through ' + esc(coverDay(last)) +
       (when ? dot + 'built ' + esc(when) : '');
+
+    var fr = document.getElementById('foot-ratings');
+    if (fr) {
+      fr.hidden = !n.rated;
+      fr.innerHTML = n.rated
+        ? 'Film ratings from <a href="https://www.imdb.com/" target="_blank" ' +
+          'rel="noopener noreferrer">IMDb</a> (non-commercial datasets) and ' +
+          '<a href="https://www.metacritic.com/" target="_blank" ' +
+          'rel="noopener noreferrer">Metacritic</a>; Rotten Tomatoes and ' +
+          'Metacritic via OMDb where configured.'
+        : '';
+    }
   }
 
   // -------------------------------------------------------------- rendering
