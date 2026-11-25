@@ -168,8 +168,15 @@ python -m cinemelb --json trending | jq -r '.[] | "\(.cinema_count)\t\(.title)"'
 ## Coverage
 
 63 venues in greater Melbourne, including every independent and art-house
-cinema. 58 are active and **all 58 return live session data**; the 5 remaining
-registry rows are documented as dormant or non-cinema in the Limitations below.
+cinema. 58 are active and **all 58 return live session data** (~19,000 sessions
+across 400 films); the 5 remaining registry rows are documented as dormant or
+non-cinema in the Limitations below.
+
+Verified against the venues' own pages by an independent auditor
+(`_recon/audit.py`): 40 randomly sampled sessions across Hoyts, Village, Palace
+and Moving Story all matched the venue's real listing for film, venue and
+advertised local date/time, with no timezone or day-of-week drift. Moving Story's
+coverage was reconciled against its date-keyed pages at 743/744 sessions present.
 
 | Platform | Venues | How |
 |---|---|---|
