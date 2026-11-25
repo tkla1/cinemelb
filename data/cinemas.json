@@ -219,8 +219,10 @@
     "website": "https://www.brunswickpicturehouse.com.au/",
     "booking_url": "",
     "screens": null,
-    "source": "generic_html",
-    "source_ids": {},
+    "source": "indy",
+    "source_ids": {
+      "indy": "72"
+    },
     "tags": [
       "arthouse",
       "independent",
@@ -562,8 +564,10 @@
     "website": "https://www.unitedcinemas.com.au",
     "booking_url": "",
     "screens": null,
-    "source": "generic_html",
-    "source_ids": {},
+    "source": "lumos",
+    "source_ids": {
+      "lumos": "1004"
+    },
     "tags": [
       "independent"
     ],
@@ -1178,8 +1182,10 @@
     "website": "https://www.waverleycinemas.com.au/",
     "booking_url": "",
     "screens": null,
-    "source": "generic_html",
-    "source_ids": {},
+    "source": "waverley",
+    "source_ids": {
+      "waverley": "www.waverleycinemas.com.au"
+    },
     "tags": [
       "independent"
     ],
@@ -1523,8 +1529,10 @@
     "website": "https://www.thornburypicturehouse.com.au",
     "booking_url": "",
     "screens": null,
-    "source": "generic_html",
-    "source_ids": {},
+    "source": "indy",
+    "source_ids": {
+      "indy": "12"
+    },
     "tags": [
       "arthouse",
       "independent",
