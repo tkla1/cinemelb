@@ -78,9 +78,16 @@ browser's geolocation, resolved against a `places` gazetteer in the bundle
 addresses. With a place set, the day sorts by distance, each film leads with
 `1.6 km · ~4 min`, and every venue on a film page shows `km · ~min drive`.
 Distances are great-circle and time divides by 22 km/h (`DRIVE_KMH`), matching
-`cinemelb.geo.SPEED_KMH["drive"]` so the page and CLI agree. Verified in real
-Chrome via Playwright: permission grant, gazetteer hit, Nominatim lookup and
-"clear" all pass locally and on the deployed URL.
+`cinemelb.geo.SPEED_KMH["drive"]` so the page and CLI agree.
+
+iOS was handled explicitly after it "did nothing" in testing: the top-left brand
+mark was a circle with crosshair ticks, which read as a second locate button and
+swallowed taps (it is a film-strip now, and the locate control is a map pin);
+`#q`/`#near-q` are exactly 16px so Safari does not zoom on focus; the request
+checks `isSecureContext`, names the iOS permission path on `code 1`, and puts a
+15-second watchdog on a prompt that never answers (in-app browsers). Verified in
+Chrome at iPhone 13 size: grant, denial message, silent-prompt watchdog, and a
+single locate control.
 
 ### Adapter coverage (venues / screenings)
 

@@ -7,7 +7,7 @@
 <meta name="description" content="Every film at every Melbourne cinema — multiplex, arthouse and independent — in one page. Search a film, browse a day, or see what is still catchable later today.">
 <meta name="theme-color" content="#0b0b14">
 <meta name="color-scheme" content="dark light">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b14'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23e8b04b' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='2.4' fill='%23e8b04b'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0b14'/%3E%3Crect x='6' y='8' width='20' height='16' rx='2.5' fill='none' stroke='%23e8b04b' stroke-width='1.9'/%3E%3Cpath d='M12 8v16M20 8v16' stroke='%23e8b04b' stroke-width='1.9'/%3E%3C/svg%3E">
 <script>
 /* Set the theme before first paint so there is no flash of the wrong one. */
 try {
@@ -25,9 +25,11 @@ try {
   <div class="top-inner">
     <a class="brand" href="#/" aria-label="cinemelb — today's showtimes">
       <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-        <circle cx="16" cy="16" r="12" fill="none" stroke="currentColor" stroke-width="2"/>
-        <circle cx="16" cy="16" r="3" fill="currentColor"/>
-        <path d="M16 4v4M16 24v4M4 16h4M24 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <rect x="4" y="6.5" width="24" height="19" rx="3"
+              fill="none" stroke="currentColor" stroke-width="2.1"/>
+        <path d="M11 6.5v19M21 6.5v19" stroke="currentColor" stroke-width="2.1"/>
+        <path d="M6.8 11.5h2.4M6.8 16h2.4M6.8 20.5h2.4M22.8 11.5h2.4M22.8 16h2.4M22.8 20.5h2.4"
+              stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
       </svg>
       <span class="brand-name">cinemelb</span>
     </a>
@@ -65,10 +67,9 @@ try {
   <div class="near-row">
     <button class="near-me" id="near-me" type="button" title="Use my location">
       <svg class="near-icon" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-        <circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" stroke-width="1.7"/>
-        <circle cx="10" cy="10" r="2.1" fill="currentColor"/>
-        <path d="M10 1.2v3.1M10 15.7v3.1M1.2 10h3.1M15.7 10h3.1"
-              stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+        <path d="M10 18.2s6.1-5.3 6.1-9.6a6.1 6.1 0 1 0-12.2 0c0 4.3 6.1 9.6 6.1 9.6Z"
+              fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+        <circle cx="10" cy="8.4" r="2.2" fill="currentColor"/>
       </svg>
       <span>Near me</span>
     </button>

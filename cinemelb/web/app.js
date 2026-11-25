@@ -315,16 +315,62 @@
     render();
   }
 
+  /* iOS Safari's failure modes are worth naming: a permission that was denied
+     once never prompts again, an in-app browser (Messages, Instagram) blocks
+     location outright, and a page not on HTTPS gets nothing at all. */
+  function geoHint() {
+    var ua = navigator.userAgent || '';
+    if (/FBAN|FBAV|Instagram|Line\/|Twitter|Snapchat|Pinterest|WhatsApp/i.test(ua)) {
+      return ' This looks like an in-app browser, which usually blocks location — open the site in Safari or Chrome.';
+    }
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      return ' On iPhone: Settings → Privacy & Security → Location Services must be on, and allow location for this site (tap aA → Website Settings).';
+    }
+    if (/Android/i.test(ua)) {
+      return ' On Android, allow location for this site from the padlock menu in the address bar.';
+    }
+    return ' Allow location for this site in your browser settings.';
+  }
+
   function requestLocation() {
-    if (!navigator.geolocation) {
-      setNearStatus('This browser has no location support. Type a suburb or address instead.', 'is-error');
+    var btn = document.getElementById('near-me');
+    var input = document.getElementById('near-q');
+
+    function offerAddress(message) {
+      setNearStatus(esc(message) + ' You can type a suburb or address instead.', 'is-error');
+      if (input) input.focus();
+    }
+
+    if (!window.isSecureContext) {
+      offerAddress('The browser only shares your location over HTTPS.');
       return;
     }
-    var btn = document.getElementById('near-me');
+    if (!navigator.geolocation) {
+      offerAddress('This browser has no location support.');
+      return;
+    }
+
+    // A prompt the user never answers can leave the callback pending forever
+    // (common in in-app browsers), which looks exactly like a dead button.
+    var settled = false;
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      if (btn) btn.disabled = false;
+      offerAddress('Still waiting for the browser to answer the location request.' + geoHint());
+    }, 15000);
+
+    function finish() {
+      settled = true;
+      clearTimeout(timer);
+      if (btn) btn.disabled = false;
+    }
+
     if (btn) btn.disabled = true;
     setNearStatus('Asking your browser for your location…', 'is-on');
+
     navigator.geolocation.getCurrentPosition(function (pos) {
-      if (btn) btn.disabled = false;
+      finish();
       setPlace({
         name: 'your location',
         lat: pos.coords.latitude,
@@ -332,13 +378,19 @@
         source: 'geolocation'
       }, false);
     }, function (err) {
-      if (btn) btn.disabled = false;
-      var msg = err && err.code === 1
-        ? 'Location permission was denied. Allow it in the browser, or type a suburb or address.'
-        : 'Could not get your location' +
-          (err && err.message ? ' (' + esc(err.message) + ')' : '') + '.';
-      setNearStatus(esc(msg), 'is-error');
-    }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 });
+      finish();
+      var code = err && err.code;
+      if (code === 1) {
+        offerAddress('Location permission was denied.' + geoHint());
+      } else if (code === 2) {
+        offerAddress('The browser could not work out where you are right now.');
+      } else if (code === 3) {
+        offerAddress('The location request timed out.');
+      } else {
+        offerAddress('Could not get your location' +
+          (err && err.message ? ' (' + err.message + ')' : '') + '.');
+      }
+    }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 });
   }
 
   function submitNear(event) {
