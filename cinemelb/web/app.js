@@ -919,7 +919,7 @@
       meta = fmtKm(nearKm) + ' · ~' + driveMinutes(nearKm) + ' min · ' + meta;
     }
 
-    var body = '';
+    var body = venueMeta(cinemaIdx);
     for (var k = 0; k < order.length; k++) {
       var film = S.films[order[k]];
       var times = byFilm.get(order[k]).slice().sort(function (a, b) {
@@ -1031,6 +1031,7 @@
       : '<span class="poster poster-none" aria-hidden="true">' +
         esc(film[1].charAt(0).toUpperCase()) + '</span>';
 
+    var filmHref = '#/film/' + encodeURIComponent(film[0]);
     return '<details class="film" data-film="' + filmIdx + '">' +
       '<summary>' + poster +
       '<div class="film-main">' +
@@ -1038,13 +1039,101 @@
         '<p class="film-meta">' + esc(meta) + '</p>' +
       '</div>' +
       '<div class="film-times">' + times + '</div>' +
+      // The film page was only reachable by searching. A card-level arrow is the
+      // obvious affordance; stopPropagation keeps the click from toggling the
+      // <details> as well.
+      '<a class="film-open" href="' + filmHref + '"' +
+        ' aria-label="Open the film page for ' + esc(film[1]) + '"' +
+        ' onclick="event.stopPropagation()">' +
+        '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">' +
+        '<path d="M7.5 4.5 13 10l-5.5 5.5" fill="none" stroke="currentColor"' +
+        ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>' +
       '</summary>' +
       '<div class="film-body">' +
+        scoreChips(film) +
         (film[7] ? '<p class="synopsis">' + esc(film[7]) + '</p>' : '') +
         venueBlocks(sorted) +
-        '<p class="film-link"><a href="#/film/' + encodeURIComponent(film[0]) +
+        '<p class="film-link"><a href="' + filmHref +
         '">All times for this film →</a></p>' +
       '</div></details>';
+  }
+
+  /* Ratings, when the build had them. Film row: [.., imdb_id, imdb, rt, mc,
+     rt_url, mc_url]. No score means no chip — never a dash or a zero. */
+  function scoreChips(film) {
+    var chips = '';
+    if (film[10] != null) {
+      chips += '<a class="score score-imdb" href="https://www.imdb.com/title/' +
+        encodeURIComponent(film[9]) + '/" target="_blank" rel="noopener noreferrer"' +
+        ' aria-label="IMDb rating ' + film[10] + ' out of 10 (opens IMDb)">' +
+        '<span class="score-src">IMDb</span><span class="score-val">' +
+        film[10].toFixed(1) + '</span></a>';
+    }
+    if (film[11] != null) {
+      var rtHref = film[13] || ('https://www.rottentomatoes.com/search?search=' +
+        encodeURIComponent(film[1]));
+      chips += '<a class="score score-rt" href="' + esc(rtHref) +
+        '" target="_blank" rel="noopener noreferrer"' +
+        ' aria-label="Rotten Tomatoes ' + film[11] + ' percent (opens Rotten Tomatoes)">' +
+        '<span class="score-src">Tomatometer</span><span class="score-val">' +
+        film[11] + '%</span></a>';
+    }
+    if (film[12] != null) {
+      var mcHref = film[14] || ('https://www.metacritic.com/search/' +
+        encodeURIComponent(film[1]) + '/');
+      chips += '<a class="score score-mc" href="' + esc(mcHref) +
+        '" target="_blank" rel="noopener noreferrer"' +
+        ' aria-label="Metascore ' + film[12] + ' out of 100 (opens Metacritic)">' +
+        '<span class="score-src">Metascore</span><span class="score-val">' +
+        film[12] + '</span></a>';
+    }
+    return chips ? '<div class="scores">' + chips + '</div>' : '';
+  }
+
+  /* Address plus the links a venue card needs. Cinema row: [name, chain,
+     suburb, address, website, tags, lat, lon, phone, booking_url]. */
+  function venueMeta(cinemaIdx) {
+    var c = S.cinemas[cinemaIdx];
+    if (!c) return '';
+    var name = c[0], address = c[3] || '', website = c[4] || '';
+    var lat = c[6], lon = c[7], phone = c[8] || '', booking = c[9] || '';
+    var maps = '';
+    if (lat != null && lon != null) {
+      maps = 'https://www.google.com/maps/search/?api=1&query=' + lat + '%2C' + lon;
+    } else if (address) {
+      maps = 'https://www.google.com/maps/search/?api=1&query=' +
+        encodeURIComponent(name + ', ' + address);
+    }
+    var links = '';
+    if (maps) {
+      links += '<a class="venue-link" href="' + esc(maps) +
+        '" target="_blank" rel="noopener noreferrer">Directions</a>';
+    }
+    if (booking) {
+      links += '<a class="venue-link" href="' + esc(booking) +
+        '" target="_blank" rel="noopener noreferrer">Tickets</a>';
+    }
+    if (website) {
+      links += '<a class="venue-link" href="' + esc(website) +
+        '" target="_blank" rel="noopener noreferrer">Website</a>';
+    }
+    if (phone) {
+      links += '<a class="venue-link" href="tel:' + esc(phone.replace(/[^\d+]/g, '')) +
+        '">' + esc(prettyPhone(phone)) + '</a>';
+    }
+    if (!address && !links) return '';
+    return '<div class="venue-meta">' +
+      (address ? '<span class="venue-addr">' + esc(address) + '</span>' : '') +
+      (links ? '<span class="venue-links">' + links + '</span>' : '') +
+      '</div>';
+  }
+
+  function prettyPhone(p) {
+    var d = String(p || '').replace(/[^\d+]/g, '');
+    if (/^0\d{9}$/.test(d)) return d.slice(0, 2) + ' ' + d.slice(2, 6) + ' ' + d.slice(6);
+    if (/^1300\d{6}$/.test(d)) return d.slice(0, 4) + ' ' + d.slice(4, 7) + ' ' + d.slice(7);
+    if (/^13\d{4}$/.test(d)) return d.slice(0, 2) + ' ' + d.slice(2, 4) + ' ' + d.slice(4);
+    return p;
   }
 
   function venueBlocks(rows) {
@@ -1079,7 +1168,8 @@
         (nearKm != null
           ? '<span class="venue-dist">' + fmtKm(nearKm) + ' · ' + fmtDrive(nearKm) + '</span>'
           : '') +
-        '</div><div class="sessions">' + sessions(times) + '</div></div>';
+        '</div>' + venueMeta(order[k]) +
+        '<div class="sessions">' + sessions(times) + '</div></div>';
     }
     return html;
   }
@@ -1176,6 +1266,7 @@
     var html = '<div class="film-hero">' + poster +
       '<div class="hero-main"><h1>' + esc(film[1]) + '</h1>' +
       (facts.length ? '<p class="film-meta">' + esc(facts.join(' · ')) + '</p>' : '') +
+      scoreChips(film) +
       (film[7] ? '<p class="synopsis">' + esc(film[7]) + '</p>' : '') +
       (film[8] ? '<p><a class="trailer" href="' + esc(film[8]) +
         '" target="_blank" rel="noopener noreferrer">Watch trailer</a></p>' : '') +

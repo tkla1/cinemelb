@@ -90,6 +90,16 @@ into the day/section heading row, with tighter padding and a shortened mobile
 count, cutting the chrome above the first card from ~371 px to ~337 px on an
 iPhone 13 viewport. Verified in Chrome at both sizes with no console errors.
 
+Bundle v2 adds venue and rating fields: cinema rows are
+`[name, chain, suburb, address, website, tags, lat, lon, phone, booking_url]` and
+film rows append `[imdb_id, imdb, rt, mc, rt_url, mc_url]`. Every film card now
+carries an arrow into its own page, every venue line shows its address plus a
+Google Maps "Directions" link (and site/booking/phone when known), and ratings
+render only when present. Scores are build-time data: `python -m cinemelb ratings`
+fills `data/ratings.json` (local IMDb bulk join, Wikidata fallback, OMDb for
+RT/MC when keyed, opt-in direct RT/MC parsing), and `export` bakes whatever is
+cached into the bundle. See `docs/api-reference/` for sources and terms.
+
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 

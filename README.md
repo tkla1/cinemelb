@@ -236,6 +236,19 @@ great-circle and drive times divide by 22 km/h — the same planning figure
 remembered in `localStorage`; coordinates from the browser's location are kept
 in memory only and never written to disk.
 
+**Film pages and venues.** A film card expands to times and venues in place, and
+carries a small arrow to its own page (the page used to be reachable only by
+searching). Every venue line shows its street address plus a Google Maps
+"Directions" link, and its website, booking page and phone where the registry
+has them. Session times link straight to the venue's own ticket page; when a
+session has no URL, the venue link is the fallback rather than a dead button.
+
+**Ratings.** IMDb, Rotten Tomatoes and Metacritic chips come from
+`data/ratings.json`, baked in at export time by `python -m cinemelb ratings`;
+the browser never calls a ratings API and holds no key. A missing score is not
+rendered — never a dash or a zero — and each chip links to its source. See
+`docs/api-reference/` for the matching rules and the terms behind each source.
+
 `_headers` gives the hashed assets a one-year immutable cache and the bundle
 five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare
 Pages answers unknown paths with `index.html`, and the app checks the data

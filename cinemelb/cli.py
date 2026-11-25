@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, time, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -867,12 +868,20 @@ def export(
     days: Optional[int] = typer.Option(None, "--days", help="Limit to the next N days"),
     synopsis: int = typer.Option(200, "--synopsis", help="Synopsis character cap (0 = full)"),
     no_urls: bool = typer.Option(False, "--no-urls", help="Drop ticket URLs (smaller bundle)"),
+    ratings: bool = typer.Option(True, "--ratings/--no-ratings",
+                                 help="Bake cached IMDb/RT/MC scores into the bundle"),
 ) -> None:
     """Build the static SPA site into a directory, ready to deploy."""
     from .export import build_bundle, write_site
 
     store = _store(ctx)
-    bundle = build_bundle(store, days=days, synopsis_cap=synopsis, include_urls=not no_urls)
+    bundle = build_bundle(
+        store,
+        days=days,
+        synopsis_cap=synopsis,
+        include_urls=not no_urls,
+        ratings=_ratings_for(store) if ratings else None,
+    )
     path = write_site(bundle, out)
 
     payload = (path / "data" / "bundle.json").stat().st_size
@@ -883,6 +892,27 @@ def export(
         f"{counts['dates']} dates"
     )
     console.print(f"  bundle  {payload / 1024:,.0f} KB  →  {path}")
+    if ratings:
+        console.print(f"  ratings {counts.get('rated', 0)} of {counts['films']} films scored")
+
+
+def _ratings_for(store) -> dict[str, dict]:
+    """Film key -> cached score entry, if the ratings module and cache exist.
+
+    The cache is keyed by normalised title because that is what the enrichment
+    step matches on; the bundle needs it keyed by film key.
+    """
+    try:
+        from .ratings import cache_key, load_cache
+    except ImportError:
+        return {}
+    cache = load_cache(Path("data/ratings.json"))
+    out: dict[str, dict] = {}
+    for film in store.films():
+        entry = cache.get(cache_key(film["title"], film.get("year")))
+        if entry:
+            out[film["key"]] = entry
+    return out
 
 
 @app.command()

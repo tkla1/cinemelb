@@ -144,11 +144,15 @@ def build_bundle(
     days: int | None = None,
     synopsis_cap: int = SYNOPSIS_CAP,
     include_urls: bool = True,
+    ratings: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Serialise the store into the index-table bundle the SPA consumes.
 
     ``days`` limits the export to the next N days from today (None = full
     coverage, which is what "all times for a film" needs).
+
+    ``ratings`` is an optional map of film key -> score dict (see
+    :mod:`cinemelb.ratings`). Anything missing stays null and the UI omits it.
     """
     today = datetime.now(MELBOURNE_TZ).date()
     cutoff = (today + timedelta(days=days - 1)).isoformat() if days else None
@@ -199,6 +203,8 @@ def build_bundle(
                 url_index[url] = len(urls)
                 urls.append(url)
 
+    rating_map = ratings or {}
+
     cinema_rows = [
         [
             c["name"],
@@ -209,9 +215,14 @@ def build_bundle(
             c.get("tags") or [],
             round(float(c["latitude"]), 5) if c.get("latitude") is not None else None,
             round(float(c["longitude"]), 5) if c.get("longitude") is not None else None,
+            c.get("phone") or "",
+            c.get("booking_url") or "",
         ]
         for c in cinemas
     ]
+
+    def rating_of(f: dict[str, Any]) -> dict[str, Any]:
+        return rating_map.get(f["key"]) or {}
 
     film_rows = [
         [
@@ -224,6 +235,12 @@ def build_bundle(
             f.get("poster_url") or "",
             _truncate(f.get("synopsis") or "", synopsis_cap),
             f.get("trailer_url") or "",
+            rating_of(f).get("imdb_id") or f.get("imdb_id") or "",
+            rating_of(f).get("imdb"),
+            rating_of(f).get("rt"),
+            rating_of(f).get("mc"),
+            rating_of(f).get("rt_url") or "",
+            rating_of(f).get("mc_url") or "",
         ]
         for f in films
     ]
@@ -262,6 +279,7 @@ def build_bundle(
     ]
 
     bundle: dict[str, Any] = {
+        "version": 2,
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "counts": {
             "cinemas": len(cinemas),
@@ -269,6 +287,7 @@ def build_bundle(
             "screenings": len(screening_rows),
             "dates": len(dates),
             "urls": len(urls),
+            "rated": sum(1 for row in film_rows if row[10] is not None),
         },
         "cinemas": cinema_rows,
         "films": film_rows,
@@ -286,11 +305,29 @@ def build_bundle(
 
 def _validate(bundle: dict[str, Any]) -> None:
     """Fail loudly on a dangling index rather than shipping a broken deploy."""
+    if bundle.get("version") != 2:
+        raise SystemExit(f"unexpected bundle version {bundle.get('version')!r}")
     if not bundle.get("places"):
         raise SystemExit("bundle has no places table — the SPA cannot geocode")
     for name, lat, lon in bundle["places"]:
         if not name or not -90 <= lat <= 90 or not -180 <= lon <= 180:
             raise SystemExit(f"bad place row: {name!r} {lat!r} {lon!r}")
+
+    for i, row in enumerate(bundle["cinemas"]):
+        if len(row) != 10:
+            raise SystemExit(f"cinema row {i} has {len(row)} fields, expected 10")
+
+    for i, row in enumerate(bundle["films"]):
+        if len(row) != 15:
+            raise SystemExit(f"film row {i} has {len(row)} fields, expected 15")
+        imdb, rt, mc = row[10], row[11], row[12]
+        if imdb is not None and not 0 <= imdb <= 10:
+            raise SystemExit(f"film row {i} imdb rating {imdb!r} outside 0..10")
+        if rt is not None and not 0 <= rt <= 100:
+            raise SystemExit(f"film row {i} RT score {rt!r} outside 0..100")
+        if mc is not None and not 0 <= mc <= 100:
+            raise SystemExit(f"film row {i} Meta score {mc!r} outside 0..100")
+
     limits = {
         0: len(bundle["dates"]),
         1: len(bundle["films"]),

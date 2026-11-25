@@ -91,22 +91,50 @@ under one agreement. The option to take if the site ever stops being personal.
 ## Matching strategy
 
 The dataset is noisy: `DUNE: PART THREE - IMAX 70MM`, `Dune: Part Three`,
-`Disney's Hexed`, `JFF26 Look Back`, `Aakasamlo Oka Tara (Telugu, Eng Sub)`, and
-only 43 of 393 films carry a year.
+`Disney's Hexed`, `JFF26 Look Back`, `Seven (1995)`, `History of Concrete, The`,
+`Aakasamlo Oka Tara (Telugu, Eng Sub)`, and only **43 of 393** films carry a
+year. Local matching against the IMDb bulk files was measured at **207/393
+auto-matches, 182 of them rated (53%)**; Wikidata search alone matched far fewer
+and produced confident errors (`Angel's Egg` → a 2006 film, `Tender Loving Care`
+→ a 1998 video game). So the bulk join is the primary matcher, Wikidata only a
+fallback for IDs.
 
-1. **Normalise** — casefold, collapse whitespace, unify apostrophes/dashes, drop
-   a leading `Disney's`, strip parentheses and known suffixes
-   (`- IMAX 70MM`, `IMAX`, `4K`, `Live`, `Q&A`, `Encore`, `- Nth Anniversary`,
-   `(2003)`, `(Telugu, Eng Sub)`), and strip festival prefixes (`JFF26`, `BFF26`,
-   `MIFF26`). Keep the suffix in `aka` so the UI can still show it.
-2. **Resolve an ID**, in order: cache → manual override → Wikidata search on the
-   normalised title (and each `aka`) → TMDB search.
-3. **Accept a candidate** only if the normalised label matches exactly *and*
-   either the year agrees (when both are known) or there is a single candidate.
-   Otherwise record `confidence: "low"` and leave the score empty rather than
-   guessing.
-4. **Fetch scores** by id: IMDb from the bulk TSV; RT/MC via OMDb when a key is
-   set. Direct RT/MC page parsing is opt-in only (see `rt-metacritic.md`).
+1. **Normalise** — NFC and mojibake repair; unify curly quotes and dashes;
+   `&` → `and`; extract any `(19|20)\d{2}` as `year_hint`; strip a leading
+   festival/venue code (`BFF26`, `JFF26`, `POLFF26`, `JIFF:`, `Astor:`,
+   `Cult Classix:`, `Reading Rewind`, `Met Opera`); strip a trailing
+   presentation/event clause (`IMAX`, `70MM`, `3D`, `VISTAVISION`, `Live`,
+   `Q&A`, `Encore`, `- 50th Anniversary`, `Subbed`, `Tickets on Sale`); rotate
+   `", The"`; spell numerals 1–10; delete apostrophes. Keep the raw title.
+   Produce `key_strict` and a stop-worded `key_loose`.
+2. **Resolve a tconst** — exact `key_strict` in `title.basics`
+   (`titleType in {movie, tvMovie}`) → `title.akas` (AU, then GB/US/NZ) → top-5
+   `difflib` on `key_loose` at ≥ 0.88 → Wikidata → unmatched.
+3. **Gate on confidence** (runtime and vote count beat recency; a repertory
+   calendar makes recency actively wrong — `AKIRA` is the 1988 film, not the
+   2016 remake):
+   - **A**: one candidate and (year ±1 **or** runtime ±2 **or** 2025+ with ≥50
+     votes) → display.
+   - **B**: several candidates, exactly one within ±1 year → display.
+   - **C**: margin < 0.15, or runtime/votes disagree → store `needs_review`,
+     don't display.
+   - **D**: none → hide the badge.
+4. **Fetch scores by tconst** — IMDb from the bulk TSV; RT/MC from OMDb when
+   keyed; MC keyless via the finder endpoint below; RT keyless only under
+   `scrape=True`.
+
+### Metacritic finder (keyless, ~92% coverage)
+
+```
+GET https://backend.metacritic.com/finder/metacritic/search/<title>/desktop
+      ?mcoTypeId=2&offset=0&limit=5
+→ data.items[0]: {title, slug, premiereYear, criticScoreSummary:{score, url}}
+```
+
+`mcoTypeId=2` is movies. Accept only when `premiereYear` agrees within ±1 (or
+there is a single exact title hit). Critic and user scores then come from
+`/reviews/metacritic/{critic,user}/movies/<slug>/stats/web`.
+
 
 ## Cache shape
 
