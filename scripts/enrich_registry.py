@@ -191,14 +191,24 @@ def main() -> int:
         dist, chain, agree = cands[0]
         rival = cands[1][0] if len(cands) > 1 else None
 
-        # Accept when the names agree, or when nothing else is anywhere near
-        # (a venue geocoded 80 m away is the same venue even if the name is
-        # written "Water Gardens" upstream and "Watergardens" here).
-        confident = agree or dist < 0.35
+        # Name agreement is required.  An earlier version also accepted "very
+        # close" as proof of sameness, which is wrong in exactly the place it
+        # matters most: Melbourne's CBD stacks half a dozen cinemas within
+        # 350 m of each other, so a 200 m distance happily fused the rooftop
+        # cinema on Curtin House into Hoyts Melbourne Central and then scraped
+        # Hoyts' sessions under the rooftop's name.  Distance is a tie-breaker
+        # between name-agreeing candidates, never evidence on its own.
+        if not agree:
+            ambiguous += 1
+            print(
+                f"  ?  {row['id']:<34} nearest {chain['platform']}:{chain['name']!r}"
+                f" at {dist:.2f}km (names disagree; rival {rival if rival is None else round(rival, 2)}km)"
+            )
+            continue
         # Two chain sites in one shopping centre differ by ~100 m; if the
         # names disagree we cannot tell them apart.
         too_close_to_disambiguate = rival is not None and (rival - dist) < 0.12
-        if not confident or (too_close_to_disambiguate and not agree):
+        if too_close_to_disambiguate:
             ambiguous += 1
             print(
                 f"  ?  {row['id']:<34} nearest {chain['platform']}:{chain['name']!r}"
@@ -217,6 +227,26 @@ def main() -> int:
         matched += 1
 
     print(f"\nmatched {matched} venues to a chain platform ({ambiguous} ambiguous, skipped)")
+
+    # A venue that is *not* served by a chain must not carry that chain's id.
+    # The harvester preserves previous source_ids, so one bad match would
+    # otherwise stick forever and quietly mis-attribute sessions (the rooftop
+    # cinema kept Hoyts' MCECIN id for a while after the matcher was fixed).
+    _CHAIN_EXTRAS = {"palace": ("palace_slug",), "village": ("village_slug",)}
+    dropped = 0
+    for row in rows:
+        source = row.get("source", "")
+        ids = row.get("source_ids") or {}
+        for platform in ("hoyts", "palace", "village"):
+            if platform == source or platform not in ids:
+                continue
+            del ids[platform]
+            for extra in _CHAIN_EXTRAS.get(platform, ()):
+                ids.pop(extra, None)
+            dropped += 1
+        row["source_ids"] = ids
+    if dropped:
+        print(f"dropped {dropped} stale chain id(s) from venues not served by that chain")
 
     REGISTRY_PATH.write_text(
         json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8"

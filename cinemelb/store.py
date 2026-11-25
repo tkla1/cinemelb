@@ -217,6 +217,22 @@ class Store:
             )
         return len(screenings)
 
+    def drop_foreign_screenings(self, cinema_id: str, source: str) -> int:
+        """Delete a venue's screenings that came from a *different* adapter.
+
+        When a venue's platform changes — a chain takes over an indie, or a
+        registry mis-assignment is corrected — the rows the old adapter wrote
+        are wrong by definition.  A failed refresh deliberately keeps the
+        previous rows, so this is what removes the ones that no longer belong
+        to the adapter that owns the venue.
+        """
+        with self.transaction() as conn:
+            cur = conn.execute(
+                "DELETE FROM screenings WHERE cinema_id=? AND source<>?",
+                (cinema_id, source),
+            )
+            return cur.rowcount
+
     def log_run(
         self, *, source: str, cinema_id: str, ok: bool, detail: str = "",
         n_screenings: int = 0, started_at: datetime | None = None,

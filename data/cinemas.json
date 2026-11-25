@@ -349,9 +349,7 @@
     "booking_url": "",
     "screens": null,
     "source": "imax",
-    "source_ids": {
-      "hoyts": "MCECIN"
-    },
+    "source_ids": {},
     "tags": [
       "imax",
       "large-format"
@@ -922,10 +920,7 @@
     "booking_url": "",
     "screens": null,
     "source": "acmi",
-    "source_ids": {
-      "palace": "300",
-      "palace_slug": "the-kino-melbourne"
-    },
+    "source_ids": {},
     "tags": [
       "arthouse",
       "festival",
@@ -952,9 +947,7 @@
     "booking_url": "",
     "screens": null,
     "source": "generic_html",
-    "source_ids": {
-      "hoyts": "MCECIN"
-    },
+    "source_ids": {},
     "tags": [
       "arthouse",
       "chinese-language"
@@ -1056,10 +1049,8 @@
     "website": "https://rooftopcinema.com.au",
     "booking_url": "",
     "screens": null,
-    "source": "hoyts",
-    "source_ids": {
-      "hoyts": "MCECIN"
-    },
+    "source": "generic_html",
+    "source_ids": {},
     "tags": [
       "arthouse",
       "outdoor",
@@ -1343,10 +1334,7 @@
     "booking_url": "",
     "screens": null,
     "source": "generic_html",
-    "source_ids": {
-      "palace": "155",
-      "palace_slug": "palace-cinema-como"
-    },
+    "source_ids": {},
     "tags": [
       "outdoor",
       "seasonal"

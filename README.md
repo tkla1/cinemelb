@@ -18,7 +18,7 @@ $ cinemelb now --near 3000 --hours 3
 
 ## Why this exists
 
-Melbourne has ~58 cinema venues across 10 different booking platforms. There is
+Melbourne has ~63 cinema venues across 10 different booking platforms. There is
 no public API that covers them. Flicks aggregates some; Google covers the
 chains; none of them will answer *"what arthouse film starts between 7 and 9pm
 within 3 km of me"* against the full set.
@@ -33,7 +33,7 @@ those questions.
 ```bash
 pip install -r requirements.txt          # requests, typer, rich, tzdata
 
-python scripts/harvest_registry.py       # build data/cinemas.json (58 venues)
+python scripts/harvest_registry.py       # build data/cinemas.json (63 venues)
 python scripts/enrich_registry.py        # attach upstream chain IDs
 
 python -m cinemelb refresh               # scrape session times
@@ -145,6 +145,17 @@ python -m cinemelb stats                         # what's in the database
 python -m cinemelb doctor                        # adapter coverage
 ```
 
+### `serve` — a read-only web page
+
+```bash
+python -m cinemelb serve                # http://127.0.0.1:8787
+python -m cinemelb serve --port 8799
+```
+
+Server-rendered, no JavaScript, no CDN: the same queries as the CLI in a
+browser, with every view bookmarkable and the state carried in the URL. Useful
+when you want to hand someone a link rather than a terminal.
+
 `--json` is a global flag and goes **before** the command:
 
 ```bash
@@ -156,7 +167,7 @@ python -m cinemelb --json trending | jq -r '.[] | "\(.cinema_count)\t\(.title)"'
 
 ## Coverage
 
-58 venues in greater Melbourne, including every independent and art-house
+63 venues in greater Melbourne, including every independent and art-house
 cinema. Each venue is scraped through the adapter appropriate to its platform.
 
 | Platform | Venues | How |

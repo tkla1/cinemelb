@@ -213,6 +213,21 @@ def refresh(
                     store.replace_screenings(cid, unique)
                     report.total_screenings += len(unique)
                     out.screenings = unique
+                elif ok:
+                    # A *successful* fetch that found nothing means the venue
+                    # genuinely has no upcoming sessions.  Clear the previous
+                    # rows, or the tool keeps advertising screenings that are
+                    # no longer on sale.
+                    store.replace_screenings(cid, [])
+                else:
+                    # The fetch failed.  Keep this adapter's previous rows — a
+                    # transient error must not blank the schedule — but drop
+                    # rows written by a different adapter, which belong to a
+                    # platform that no longer owns this venue.
+                    dropped = store.drop_foreign_screenings(cid, source)
+                    if dropped:
+                        out.note = (out.note + f" ({dropped} stale rows from another "
+                                    "adapter removed)").strip()
                 report.venues.append(
                     VenueReport(
                         cinema_id=cid,

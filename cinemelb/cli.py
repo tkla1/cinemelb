@@ -819,6 +819,18 @@ def doctor(ctx: typer.Context) -> None:
         console.print(f"[yellow]unimplemented: {', '.join(missing)}[/yellow]")
 
 
+@app.command()
+def serve(
+    ctx: typer.Context,
+    host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
+    port: int = typer.Option(8787, "--port", "-p", help="Port"),
+) -> None:
+    """Serve the results as a read-only local web page."""
+    from .serve import serve as serve_ui
+
+    serve_ui(host=host, port=port, db=ctx.obj.get("db"))
+
+
 def run() -> None:
     app()
 
