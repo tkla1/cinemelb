@@ -255,6 +255,29 @@ Pages answers unknown paths with `index.html`, and the app checks the data
 file's `Content-Type` before parsing it so a misconfigured deploy fails loudly
 instead of "parsing" an HTML error page as JSON.
 
+### `ratings` — attach IMDb / RT / Metacritic scores
+
+```bash
+python -m cinemelb ratings                  # fill data/ratings.json
+python -m cinemelb ratings --limit 20       # smoke run (new lookups only)
+OMDB_API_KEY=... python -m cinemelb ratings # also Rotten Tomatoes + Metacritic
+python -m cinemelb ratings --refresh        # ignore the cache
+```
+
+Build-time only: the browser never sees a key or calls a ratings service. Titles
+are normalised (`- IMAX 70MM`, `JFF26 …`, `(2003)`, `, The`, `Se7en`) and matched
+against the official IMDb bulk files, with Wikidata as a fallback for IDs. The
+confidence gate stores ambiguous matches as `needs_review` and never displays
+them; runtime and vote count outrank recency, so a repertory screening of
+*AKIRA* resolves to the 1988 film rather than the remake.
+
+IMDb scores come from `title.ratings.tsv.gz`. RT/MC come from OMDb when a free
+`OMDB_API_KEY` is set (1,000 requests/day); without one, Metacritic has a
+keyless fallback and Rotten Tomatoes needs `--scrape-rt-mc`, which is against
+both sites' terms — see `docs/api-reference/rt-metacritic.md`. Everything lands
+in `data/ratings.json` (gitignored); `export` bakes it in, and `--no-ratings`
+leaves the fields null.
+
 `--json` is a global flag and goes **before** the command:
 
 ```bash

@@ -4,6 +4,7 @@ data/cinemelb.sqlite3
 data/cinemelb.sqlite3-wal
 data/cinemelb.sqlite3-shm
 data/cache/geocode.json
+data/ratings.json
 
 # scratch: downloaded pages and one-off inspection scripts
 _recon/

@@ -916,6 +916,84 @@ def _ratings_for(store) -> dict[str, dict]:
 
 
 @app.command()
+def ratings(
+    ctx: typer.Context,
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Only look up this many films that are not cached"),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Ignore cached scores and look them up again"),
+    scrape: bool = typer.Option(
+        False, "--scrape-rt-mc",
+        help="Parse Rotten Tomatoes/Metacritic pages directly; their terms "
+             "forbid automated collection"),
+    pace: float = typer.Option(2.5, "--pace", help="Seconds between requests to the same host"),
+    ttl: float = typer.Option(14.0, "--ttl", help="Days a cached score stays fresh"),
+) -> None:
+    """Attach IMDb, Rotten Tomatoes and Metacritic scores to the catalogue.
+
+    Build-time and cached: the browser never calls a ratings service. IMDb comes
+    from the official bulk dataset, RT/MC from OMDb when ``OMDB_API_KEY`` is set,
+    and Metacritic also has a keyless fallback. Direct page parsing needs
+    ``--scrape-rt-mc`` and is against both sites' terms.
+    """
+    import os
+
+    from .ratings import enrich
+
+    store = _store(ctx)
+    films = store.films()
+    if not films:
+        console.print("[yellow]No films in the database. Run `refresh` first.[/yellow]")
+        raise typer.Exit(1)
+
+    omdb_key = os.environ.get("OMDB_API_KEY") or None
+    if omdb_key:
+        console.print("[dim]OMDb key found: IMDb, Rotten Tomatoes and Metacritic.[/dim]")
+    else:
+        console.print(
+            "[dim]No OMDB_API_KEY: IMDb from the bulk dataset, Metacritic via its "
+            "finder; Rotten Tomatoes only with --scrape-rt-mc.[/dim]"
+        )
+    if scrape:
+        console.print(
+            "[yellow]--scrape-rt-mc parses RT/MC pages; their terms forbid automated "
+            "collection.[/yellow]"
+        )
+
+    seen = 0
+
+    def progress(film_key: str, status: dict) -> None:
+        nonlocal seen
+        seen += 1
+        if seen % 20 == 0:
+            console.print(
+                f"  {seen:>4}  {film_key[:40]:<40} "
+                f"imdb={status.get('imdb') if status.get('imdb') is not None else '-':<5} "
+                f"rt={status.get('rt') if status.get('rt') is not None else '-':<5} "
+                f"mc={status.get('mc') if status.get('mc') is not None else '-'}",
+                highlight=False,
+            )
+
+    result = enrich(
+        films,
+        cache_path=Path("data/ratings.json"),
+        omdb_key=omdb_key,
+        scrape=scrape,
+        limit=limit,
+        ttl_days=0 if refresh else ttl,
+        pace=pace,
+        progress=progress,
+    )
+    stats = result["stats"]
+    console.print(
+        f"[bold]Ratings[/bold] {stats['films']} films · cached {stats['cached']} · "
+        f"resolved {stats['resolved']} · IMDb {stats['imdb']} · RT {stats['rt']} · "
+        f"MC {stats['mc']} · skipped {stats['skipped']} · failed {stats['failed']}"
+    )
+    console.print("  cache  data/ratings.json — run `export` to bake it in")
+
+
+@app.command()
 def serve(
     ctx: typer.Context,
     host: str = typer.Option("127.0.0.1", "--host", help="Bind address"),
