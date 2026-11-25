@@ -100,6 +100,13 @@ fills `data/ratings.json` (local IMDb bulk join, Wikidata fallback, OMDb for
 RT/MC when keyed, opt-in direct RT/MC parsing), and `export` bakes whatever is
 cached into the bundle. See `docs/api-reference/` for sources and terms.
 
+First full ratings pass (26 Nov, no OMDb key): 248 of 393 films resolved to an
+IMDb id, **218 IMDb scores**, **158 Metascores** via the keyless Metacritic
+finder, 0 Rotten Tomatoes, 0 failures. RT needs either `OMDB_API_KEY` or
+`--scrape-rt-mc`; `AKIRA` resolved to `tt0094625` (1988), which is the case the
+confidence gate exists for. The datasets live in `data/cache/` (755 MB, cached
+and pickled); `data/ratings.json` is gitignored and rebuilt by the command.
+
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 
