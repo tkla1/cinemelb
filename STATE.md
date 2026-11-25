@@ -150,9 +150,10 @@ All four platforms audited (hoyts, village, palace, movingstory) are rated
 
 ## Git
 
-`master` at `748d770`. Working tree clean. The three agent branches
-(`feat/quality`, `feat/reading-adapter`, `feat/indie-hard`) are all at the
-baseline commit and hold no work — master is strictly ahead of them.
+`master` at `9ed0c07` (static site: exporter, shell, deploy). The three agent
+branches (`feat/quality`, `feat/reading-adapter`, `feat/indie-hard`) are all at
+the baseline commit and hold no work — master is strictly ahead of them. The
+public repo is `https://github.com/tkla1/cinemelb`.
 
 ## Remaining work
 
