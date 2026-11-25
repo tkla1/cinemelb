@@ -221,7 +221,7 @@ def _show_hits(hits: list[Q.Hit], *, as_json: bool = False,
 
     rows = hits[: limit or len(hits)]
     for h in rows:
-        cells = [h.when, h.screening["film_title"], h.cinema["name"],
+        cells = [h.when, h.film, h.cinema["name"],
                  h.cinema.get("suburb", "") or ""]
         if show_distance:
             cells.append(format_distance(h.distance_km) if h.distance_km is not None else "")
@@ -365,7 +365,7 @@ def film(
             if meta.get("genres"):
                 bits.append(" / ".join(meta["genres"][:3]))
             suffix = f"  [dim]{' · '.join(bits)}[/dim]" if bits else ""
-            display_title = meta.get("title") or head.screening["film_title"]
+            display_title = meta.get("title") or head.film
             console.print(f"\n[bold white]{display_title}[/bold white]{suffix}")
             current_film = film_key
             current_cinema = None
@@ -499,7 +499,7 @@ def near(
         table.add_column("Next", style="cyan")
         table.add_column("Dist", justify="right", style="magenta")
         for h in list(seen.values())[:limit]:
-            table.add_row(h.screening["film_title"], h.cinema["name"], h.when,
+            table.add_row(h.film, h.cinema["name"], h.when,
                           format_distance(h.distance_km) if h.distance_km is not None else "")
         console.print(table)
     else:
@@ -549,7 +549,7 @@ def whats_on(
         names = ", ".join(list(venues.values())[:4])
         if len(venues) > 4:
             names += f" +{len(venues) - 4}"
-        table.add_row(group[0].screening["film_title"], str(len(venues)),
+        table.add_row(group[0].film, str(len(venues)),
                       str(len(group)), names)
     console.print(table)
     _freshness(store)

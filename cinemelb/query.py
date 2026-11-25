@@ -18,6 +18,7 @@ import difflib
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
+from typing import Callable
 from .geo import haversine_km, travel_minutes
 from .models import MELBOURNE_TZ, film_key, normalise_title
 from .store import Store
@@ -29,8 +30,18 @@ class Hit:
     screening: dict
     distance_km: float | None = None
     travel_min: int | None = None
+    #: The catalogue's preferred spelling of the film title.  Chains publish
+    #: their own wording — Hoyts shouts "THE HUNGER GAMES: SUNRISE ON THE
+    #: REAPING", the catalogue holds "The Hunger Games: Sunrise on the Reaping"
+    #: — so display should use the catalogue's, not the row's.
+    display_title: str = ""
 
     # -- presentation helpers ---------------------------------------------
+    @property
+    def film(self) -> str:
+        """The title to show a person: catalogue spelling, else the row's own."""
+        return self.display_title or self.screening["film_title"]
+
     @property
     def when(self) -> str:
         s = self.screening
@@ -45,7 +56,7 @@ class Hit:
             "chain": self.cinema.get("chain", ""),
             "date": self.screening["local_date"],
             "time": self.screening["local_time"],
-            "film": self.screening["film_title"],
+            "film": self.film,
             "format": self.screening.get("format", ""),
             "screen": self.screening.get("screen", ""),
             "attributes": self.screening.get("attributes", []),
@@ -85,6 +96,16 @@ class Filters:
 
 def _cinema_index(store: Store) -> dict[str, dict]:
     return {c["id"]: c for c in store.cinemas()}
+
+
+def _title_index(store: Store) -> dict[str, str]:
+    """film_key -> the catalogue's preferred spelling.
+
+    Chains publish their own casing ("THE HUNGER GAMES: SUNRISE ON THE
+    REAPING"); the catalogue already resolves that to the cased title.  Display
+    should use it, so a result list does not shout.
+    """
+    return {f["key"]: f["title"] for f in store.films()}
 
 
 def _venue_allowed(cinema: dict, f: Filters) -> bool:
@@ -129,18 +150,28 @@ def _decorate(hits: list[Hit], origin: tuple[float, float] | None) -> list[Hit]:
     return hits
 
 
-def _sort(hits: list[Hit], origin: tuple[float, float] | None, f: Filters) -> list[Hit]:
+def _apply_titles(hits: list[Hit], titles: dict[str, str]) -> list[Hit]:
+    """Fill ``display_title`` from the catalogue for every hit."""
+    for h in hits:
+        h.display_title = titles.get(h.screening["film_key"], "")
+    return hits
+
+
+def _sort_key(h: Hit, origin: tuple[float, float] | None) -> tuple:
+    """One ordering rule, shared by ``_sort`` and ``_limit_with_breadth``."""
     if origin:
         # `distance_km or 1e9` would be wrong: 0.0 is falsy, so a venue at the
         # query point (distance 0) would sort last instead of first.
-        hits.sort(key=lambda h: (
+        return (
             h.distance_km is None,
             h.distance_km if h.distance_km is not None else 1e9,
             h.screening["local_date"], h.screening["local_time"],
-        ))
-    else:
-        hits.sort(key=lambda h: (h.screening["local_date"], h.screening["local_time"],
-                                 h.cinema["name"]))
+        )
+    return (h.screening["local_date"], h.screening["local_time"], h.cinema["name"])
+
+
+def _sort(hits: list[Hit], origin: tuple[float, float] | None, f: Filters) -> list[Hit]:
+    hits.sort(key=lambda h: _sort_key(h, origin))
     return hits
 
 
@@ -215,7 +246,13 @@ def resolve_film(store: Store, text: str) -> list[tuple[str, str]]:
 # the three queries
 # --------------------------------------------------------------------------- #
 
-def _limit_with_breadth(hits: list[Hit], limit: int, per_cinema: int = 8) -> list[Hit]:
+def _limit_with_breadth(
+    hits: list[Hit],
+    limit: int,
+    per_cinema: int = 8,
+    *,
+    sort_key: Callable[[Hit], tuple] | None = None,
+) -> list[Hit]:
     """Truncate to ``limit`` sessions while guaranteeing every venue appears.
 
     A plain ``hits[:limit]`` on a time-sorted list lets the venues with the most
@@ -228,32 +265,44 @@ def _limit_with_breadth(hits: list[Hit], limit: int, per_cinema: int = 8) -> lis
     When there are more venues than ``limit`` slots, the result may exceed
     ``limit`` by up to the venue count: naming every venue is the point, and a
     hard cap that silently omits a cinema is the bug this exists to prevent.
+
+    ``sort_key`` orders the final list; the default is earliest-first.  ``near``
+    passes a distance-first key so the nearest venues stay at the top.
     """
-    if limit <= 0 or len(hits) <= limit:
+    if limit <= 0:
+        return []
+    if len(hits) <= limit:
         return hits[:limit]
 
     first: dict[str, Hit] = {}
     for hit in hits:
         first.setdefault(hit.cinema["id"], hit)
 
+    # A fixed per-venue cap is right for "which cinemas is this film at?" but
+    # wrong for "what's near me?" with a large limit: capping at 8 each meant
+    # asking for 200 nearby sessions still returned 64.  Scale the cap with the
+    # limit so a big request is honoured, while still stopping one megaplex
+    # from taking every slot.
+    cap = max(per_cinema, -(-limit // len(first)))
+
     keep: list[Hit] = list(first.values())
     chosen = {id(h) for h in keep}
     per_venue: dict[str, int] = {cid: 1 for cid in first}
 
-    # Fill the remaining slots earliest-first, respecting the per-venue cap.
+    # Fill the remaining slots in the incoming order, respecting the per-venue cap.
     for hit in hits:
         if len(keep) >= limit:
             break
         if id(hit) in chosen:
             continue
         cid = hit.cinema["id"]
-        if per_venue.get(cid, 0) >= per_cinema:
+        if per_venue.get(cid, 0) >= cap:
             continue
         keep.append(hit)
         chosen.add(id(hit))
         per_venue[cid] = per_venue.get(cid, 0) + 1
 
-    keep.sort(key=lambda h: (h.screening["local_date"], h.screening["local_time"]))
+    keep.sort(key=sort_key or (lambda h: (h.screening["local_date"], h.screening["local_time"])))
     return keep
 
 
@@ -299,6 +348,7 @@ def find_film(
             hits.append(Hit(cinema=cinema, screening=s))
 
     _decorate(hits, origin)
+    _apply_titles(hits, _title_index(store))
     hits = _sort(hits, origin, f)
     hits = _apply_distance_cap(hits, f)
     return matches, _limit_with_breadth(hits, f.limit, per_cinema)
@@ -330,6 +380,7 @@ def films_at(
         hits.append(Hit(cinema=cinema, screening=s))
 
     _decorate(hits, origin)
+    _apply_titles(hits, _title_index(store))
     hits = _sort(hits, origin, f)
     return _apply_distance_cap(hits, f)[: f.limit]
 
@@ -371,8 +422,15 @@ def nearest(
         hits.append(Hit(cinema=cinema, screening=s))
 
     _decorate(hits, origin)
+    _apply_titles(hits, _title_index(store))
     hits = _sort(hits, origin, f)
-    return hits[: f.limit]
+    hits = _apply_distance_cap(hits, f)
+    # "What's near me?" is a question about VENUES, so one megaplex a block away
+    # must not fill every slot.  Breadth-first truncation keeps each venue's
+    # nearest session and then fills by the caller's order (distance-first).
+    return _limit_with_breadth(
+        hits, f.limit, per_cinema=8, sort_key=lambda h: _sort_key(h, origin)
+    )
 
 
 # --------------------------------------------------------------------------- #

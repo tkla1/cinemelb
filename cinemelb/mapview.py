@@ -154,7 +154,7 @@ def _venue_payload(hits, origin, radius_km) -> dict:
             "time": h.screening["local_time"],
             "date": h.screening["local_date"],
             "date_short": f"{d:%a}",
-            "film": h.screening["film_title"],
+            "film": h.film,
             "format": h.screening.get("format", ""),
             "ticket_url": h.screening.get("ticket_url", ""),
         })

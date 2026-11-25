@@ -277,6 +277,49 @@ class TestQueries(unittest.TestCase):
         self.assertNotIn("far", ids)
         self.assertLessEqual(hits[0].distance_km, 0.2)
 
+    def test_nearest_keeps_every_venue_under_a_limit(self):
+        """A megaplex next door must not fill every slot.
+
+        Regression: ``nearest`` truncated a distance-sorted list with
+        ``hits[:limit]``, so a venue with eight sessions 250 m away filled all
+        eight slots and every other venue in the radius disappeared.
+        """
+        from cinemelb.models import Cinema
+        from cinemelb.query import nearest
+
+        # A venue at the query point with 12 sessions...
+        self.store.upsert_cinemas([
+            Cinema(id="loud", name="Loud Multiplex", suburb="Melbourne",
+                   latitude=-37.8090, longitude=144.9636),
+        ])
+        self.store.replace_screenings("loud", [
+            make_screening(cinema_id="loud", film_title="Dune: Part Three",
+                           local_naive=datetime(2026, 11, 26, 10 + h, 0), source="t")
+            for h in range(12)
+        ])
+        # ...plus the existing venues, all within 2 km.
+        hits = nearest(self.store, (-37.8090, 144.9636), radius_km=2.5,
+                       filters=__import__("cinemelb.query", fromlist=["Filters"]).Filters(limit=8))
+        ids = {h.cinema["id"] for h in hits}
+        self.assertIn("loud", ids)
+        self.assertIn("nova", ids, "a nearby venue was squeezed out by the megaplex")
+        self.assertIn("hoyts", ids, "a nearby venue was squeezed out by the megaplex")
+
+    def test_display_title_uses_catalogue_casing(self):
+        """Chains shout; the catalogue does not.  Display the catalogue's title."""
+        from cinemelb.query import find_film
+
+        self.store.replace_screenings("hoyts", [
+            make_screening(cinema_id="hoyts", film_title="DUNE: PART THREE",
+                           local_naive=datetime(2026, 11, 26, 21, 30), source="t",
+                           film_key_override="dune-part-three"),
+        ])
+        _, hits = find_film(self.store, "dune")
+        self.assertTrue(hits)
+        for h in hits:
+            self.assertEqual(h.film, "Dune: Part Three",
+                             f"row title {h.screening['film_title']!r} leaked into display")
+
     def test_tag_filter(self):
         from cinemelb.query import Filters, find_film
 
