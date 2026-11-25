@@ -206,6 +206,12 @@ A film page offers the same pivot: **by day** (day → venue), **by cinema**
 (venue → day), or **by time** (time of day → day → venue). The choice is a view
 preference, so it is remembered in `localStorage` and survives a reload.
 
+The time-of-day sections collapse: click a heading to fold that part of the day
+away, which makes "what is on after work" readable without scrolling past the
+morning. And a session after midnight belongs to the **previous** listing day —
+the 00:31 on the 27th is the 26th's Late night, still shown as `12:31am` — so a
+Friday evening out does not lose its midnight session to Saturday's page.
+
 **Filters.** Beyond accessible screenings and chain, two session-level filters
 cut the list down:
 

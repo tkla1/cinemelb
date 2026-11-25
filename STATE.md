@@ -79,8 +79,16 @@ by cinema or by time. Two session-level filters sit alongside the existing chips
 20 minutes rather than a flat 20. The grouping choice is a view preference and
 is persisted in `localStorage`; filters are in memory only. Clearing the location
 also clears the drive-time filter, so a hidden control cannot keep hiding
-sessions. Verified in Chrome against both the built bundle and the live deploy,
-desktop and iPhone 13 viewport, with no console errors.
+sessions.
+
+Three follow-ups after using it on a phone: the time-of-day sections are now
+`<details open>` and collapse on a tap; sessions starting before 06:00 are
+shifted onto the previous listing day (`minute + 1440`, `date - 1` at index time,
+rows on the first day dropped), so a 00:31 on the 27th is the 26th's Late night
+and `isPast`/`isTooSoon` compare absolute minutes; and the grouping control moved
+into the day/section heading row, with tighter padding and a shortened mobile
+count, cutting the chrome above the first card from ~371 px to ~337 px on an
+iPhone 13 viewport. Verified in Chrome at both sizes with no console errors.
 
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.

@@ -20,6 +20,11 @@
   // so the page and the CLI quote the same figure for the same venue.
   var DRIVE_KMH = 22;
 
+  // Sessions starting before this many minutes past midnight belong to the
+  // previous listing day (a 00:31 session is Friday's late night). Cinemas run
+  // nothing else that early, so 06:00 is a safe cutoff.
+  var LATE_CUTOFF = 6 * 60;
+
   // Session filters. "after" is a minute past midnight, so one preset works on
   // every day; "within" is a drive-time ceiling in minutes and only appears
   // once a place is set. Both are session-level, so they behave identically in
@@ -44,11 +49,12 @@
   ];
   // Time-of-day buckets for the "by time" grouping. A day holds ~1,900
   // sessions, so a flat timeline is unreadable; buckets keep the pivot useful.
+  // Late night runs past midnight: shifted rows carry minute + 1440.
   var TIME_BUCKETS = [
     { from: 0, to: 12 * 60, name: 'Morning' },
     { from: 12 * 60, to: 17 * 60, name: 'Afternoon' },
     { from: 17 * 60, to: 21 * 60, name: 'Evening' },
-    { from: 21 * 60, to: 24 * 60, name: 'Late night' }
+    { from: 21 * 60, to: 30 * 60, name: 'Late night' }
   ];
 
   // ------------------------------------------------------------------- state
@@ -135,13 +141,15 @@
     return p.dowLong + ' ' + p.day + ' ' + p.monLong;
   }
 
-  /* Melbourne cinemas write "7pm", "7:30pm", "12pm" — never "07:00". */
+  /* Melbourne cinemas write "7pm", "7:30pm", "12pm" — never "07:00". Minutes
+     past 24:00 are late-night sessions shifted onto the previous listing day. */
   function clock(minute) {
-    var h = Math.floor(minute / 60), m = minute % 60;
+    var m = ((minute % 1440) + 1440) % 1440;
+    var h = Math.floor(m / 60), mm = m % 60;
     var suffix = h >= 12 ? 'pm' : 'am';
     var h12 = h % 12;
     if (h12 === 0) h12 = 12;
-    return h12 + (m ? ':' + pad(m) : '') + suffix;
+    return h12 + (mm ? ':' + pad(mm) : '') + suffix;
   }
 
   function relative(iso) {
@@ -469,32 +477,36 @@
     return false;
   }
 
+  /* Minutes from now on one absolute timeline: listing-day index * 1440 plus
+     the (possibly shifted) minute. Negative means the session has started. */
+  function minutesUntil(row) {
+    return (S.rowDate[row] * 1440 + S.rowMinute[row]) -
+           (S.today * 1440 + S.nowMinute);
+  }
+
   /* A session is past when its start time has gone, on the day it belongs to.
      Days before today are entirely past even though the bundle still carries
      them, which is why this compares the date index and not just the clock. */
   function isPast(row) {
-    var d = S.rowDate[row];
-    if (d > S.today) return false;
-    if (d < S.today) return true;
-    return S.rowMinute[row] < S.nowMinute;
+    return minutesUntil(row) < 0;
   }
 
   function isTooSoon(row) {
-    if (S.rowDate[row] !== S.today) return false;
-    return S.rowMinute[row] - S.nowMinute < LEAD_MINUTES;
+    var d = minutesUntil(row);
+    return d >= 0 && d < LEAD_MINUTES;
   }
 
   /* "Leaves time to get there" is travel-aware once a place is set: a session
      five minutes away across town is not catchable, while one five minutes
      away next door is. The fixed LEAD_MINUTES stays the floor. */
   function leavesTooLittleTime(row) {
-    if (S.rowDate[row] !== S.today) return false;
     var lead = LEAD_MINUTES;
     if (S.place) {
       var km = kmTo(S.rowCinema[row]);
       if (km != null) lead = Math.max(lead, driveMinutes(km) + 5);
     }
-    return S.rowMinute[row] - S.nowMinute < lead;
+    var d = minutesUntil(row);
+    return d >= 0 && d < lead;
   }
 
   function rowPasses(row) {
@@ -541,7 +553,27 @@
     S.cinemas = bundle.cinemas;
     S.films = bundle.films;
 
-    var n = bundle.screenings.length;
+    // A session after midnight belongs to the previous listing day: the 00:31
+    // on the 27th is the 26th's late-night session. Shift those rows onto the
+    // previous date and add a day's minutes, so the day slice, the film page
+    // and the time buckets all agree while the clock still reads "12:31am".
+    // Rows on the first exported day are dropped — their listing day is not in
+    // the build.
+    var kept = [];
+    var raw = bundle.screenings;
+    for (var i = 0; i < raw.length; i++) {
+      var r = raw[i];
+      var dateIdx = r[0];
+      var minute = r[2];
+      if (minute < LATE_CUTOFF) {
+        if (dateIdx === 0) continue;
+        dateIdx -= 1;
+        minute += 24 * 60;
+      }
+      kept.push([dateIdx, r[1], minute, r[3], r[4], r[5], r[6], r[7], r[8]]);
+    }
+
+    var n = kept.length;
     S.rowFilm = new Int32Array(n);
     S.rowCinema = new Int32Array(n);
     S.rowMinute = new Int32Array(n);
@@ -554,25 +586,25 @@
 
     var byDate = new Map();
     var byFilm = new Map();
-    for (var i = 0; i < n; i++) {
-      var r = bundle.screenings[i];
-      S.rowDate[i] = r[0];
-      S.rowFilm[i] = r[1];
-      S.rowMinute[i] = r[2];
-      S.rowCinema[i] = r[3];
-      S.rowFormat[i] = r[4];
-      S.rowAttr[i] = r[5];
-      S.rowSold[i] = r[6];
-      S.rowUrl[i] = r[7];
-      S.rowScreen[i] = r[8];
+    for (var i2 = 0; i2 < n; i2++) {
+      var row = kept[i2];
+      S.rowDate[i2] = row[0];
+      S.rowFilm[i2] = row[1];
+      S.rowMinute[i2] = row[2];
+      S.rowCinema[i2] = row[3];
+      S.rowFormat[i2] = row[4];
+      S.rowAttr[i2] = row[5];
+      S.rowSold[i2] = row[6];
+      S.rowUrl[i2] = row[7];
+      S.rowScreen[i2] = row[8];
 
-      var d = byDate.get(r[0]);
-      if (!d) byDate.set(r[0], d = []);
-      d.push(i);
+      var d = byDate.get(row[0]);
+      if (!d) byDate.set(row[0], d = []);
+      d.push(i2);
 
-      var f = byFilm.get(r[1]);
-      if (!f) byFilm.set(r[1], f = []);
-      f.push(i);
+      var f = byFilm.get(row[1]);
+      if (!f) byFilm.set(row[1], f = []);
+      f.push(i2);
     }
     S.byDate = byDate;
     S.byFilm = byFilm;
@@ -769,8 +801,8 @@
       '<h1>' + esc(longDay(dayIso)) + '</h1>' +
       (rel ? '<span class="badge">' + esc(rel) + '</span>' : '') +
       '<span class="count">' + films.size + ' film' + (films.size === 1 ? '' : 's') +
-      ' · ' + rows.length + ' session' + (rows.length === 1 ? '' : 's') +
-      '</span></div>';
+      '<span class="count-sessions"> · ' + rows.length + ' session' +
+      (rows.length === 1 ? '' : 's') + '</span></span>' + viewBar('day') + '</div>';
 
     if (!rows.length) {
       // "Nothing left" and "nothing matched your filters" are different facts,
@@ -796,7 +828,7 @@
       return;
     }
 
-    var html = head + viewBar('day');
+    var html = head;
     if (S.group === 'cinema') html += dayByCinema(rows);
     else if (S.group === 'time') html += dayByTime(rows);
     else html += dayByFilm(rows);
@@ -925,14 +957,15 @@
       if (!inBucket.length) continue;
       var groups = groupByFilm(inBucket);
       var order = orderFilms(groups);
-      html += '<div class="time-block"><h2 class="time-head">' + esc(bucket.name) +
+      html += '<details class="time-block" open><summary class="time-head">' +
+        esc(bucket.name) +
         '<span class="count">' + inBucket.length + ' session' +
         (inBucket.length === 1 ? '' : 's') + ' · ' + groups.size + ' film' +
-        (groups.size === 1 ? '' : 's') + '</span></h2><div class="films">';
+        (groups.size === 1 ? '' : 's') + '</span></summary><div class="films">';
       for (var k = 0; k < order.length; k++) {
         html += filmCard(order[k], groups.get(order[k]));
       }
-      html += '</div></div>';
+      html += '</div></details>';
     }
     return html;
   }
@@ -943,7 +976,7 @@
       var m = S.rowMinute[rows[i]];
       if (m < best && !isPast(rows[i])) best = m;
     }
-    return best === Infinity ? 24 * 60 : best;
+    return best === Infinity ? 30 * 60 : best;
   }
 
   function filmCard(filmIdx, rows) {
@@ -1168,7 +1201,7 @@
 
     html += '<div class="section-head"><h2>All sessions</h2><span class="count">' +
       rows.length + ' across ' + dayOrder.length + ' day' +
-      (dayOrder.length === 1 ? '' : 's') + '</span></div>' + viewBar('film');
+      (dayOrder.length === 1 ? '' : 's') + '</span>' + viewBar('film') + '</div>';
 
     if (S.filmGroup === 'cinema') html += filmByCinema(rows);
     else if (S.filmGroup === 'time') html += filmByTime(rows);
@@ -1262,10 +1295,11 @@
       }
       var days = Array.from(byDate.keys()).sort(function (a, b) { return a - b; });
 
-      html += '<div class="time-block"><h2 class="time-head">' + esc(bucket.name) +
+      html += '<details class="time-block" open><summary class="time-head">' +
+        esc(bucket.name) +
         '<span class="count">' + inBucket.length + ' session' +
         (inBucket.length === 1 ? '' : 's') + ' · ' + days.length + ' day' +
-        (days.length === 1 ? '' : 's') + '</span></h2>';
+        (days.length === 1 ? '' : 's') + '</span></summary>';
       for (var dd = 0; dd < days.length; dd++) {
         var iso = S.bundle.dates[days[dd]];
         var rel = relative(iso);
@@ -1273,7 +1307,7 @@
           (rel ? ' <span class="badge">' + esc(rel) + '</span>' : '') +
           '</h3>' + venueBlocks(byDate.get(days[dd])) + '</div>';
       }
-      html += '</div>';
+      html += '</details>';
     }
     return html;
   }

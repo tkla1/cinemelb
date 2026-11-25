@@ -216,7 +216,7 @@ a:hover { color: var(--accent); }
 
 .filters {
   max-width: var(--wrap); margin: 0 auto;
-  padding: 10px 16px 0;
+  padding: 8px 16px 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
 }
 
@@ -247,15 +247,18 @@ a:hover { color: var(--accent); }
 
 /* ---------------------------------------------------------- view switcher */
 
+/* The grouping control sits in the heading row, so the list starts one band of
+   chrome higher. It right-aligns on desktop and takes its own line on mobile. */
 .view-bar {
   display: flex;
-  width: 100%; max-width: 340px;
-  margin: 0 0 14px;
+  width: 100%; max-width: 320px;
+  margin: 0 0 0 auto;
+  align-self: center;
   border: 1px solid var(--line); border-radius: 999px;
   overflow: hidden; background: var(--panel);
 }
 .seg-btn {
-  flex: 1 1 auto; height: 36px; padding: 0 12px;
+  flex: 1 1 auto; height: 32px; padding: 0 12px;
   border: 0; background: none; color: var(--text-3);
   font: inherit; font-size: 13px; font-weight: 540;
   white-space: nowrap; cursor: pointer;
@@ -272,7 +275,7 @@ a:hover { color: var(--accent); }
 
 .nearbar {
   max-width: var(--wrap); margin: 0 auto;
-  padding: 9px 16px 0;
+  padding: 6px 16px 0;
 }
 .near-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 
@@ -320,7 +323,7 @@ a:hover { color: var(--accent); }
 
 .main {
   max-width: var(--wrap); margin: 0 auto;
-  padding: 16px 16px 64px;
+  padding: 14px 16px 64px;
   min-height: 60vh;
 }
 .main:focus { outline: none; }
@@ -343,7 +346,7 @@ a:hover { color: var(--accent); }
 
 .day-head {
   display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  margin: 2px 0 14px;
+  margin: 0 0 12px;
 }
 .day-head h1 { margin: 0; font-size: 21px; font-weight: 680; letter-spacing: -.02em; }
 
@@ -507,13 +510,25 @@ a.session:hover .notes { color: var(--text-2); }
 
 /* -------------------------------------------------------- grouped by time */
 
-.time-block { margin-bottom: 26px; }
+.time-block { margin-bottom: 18px; }
 .time-block:last-child { margin-bottom: 0; }
 .time-head {
   display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
-  margin: 0 0 10px; font-size: 15px; font-weight: 650; letter-spacing: -.01em;
+  margin: 0 0 10px; padding: 0;
+  font-size: 15px; font-weight: 650; letter-spacing: -.01em;
+  cursor: pointer; list-style: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.time-head::-webkit-details-marker { display: none; }
+.time-head:focus-visible { outline-offset: 3px; }
 .time-head .count { font-weight: 400; }
+/* Disclosure caret: down when open, right when closed. */
+.time-head::after {
+  content: '\25BE'; margin-left: 6px; align-self: center;
+  color: var(--text-3); font-size: 12px; line-height: 1;
+}
+.time-block:not([open]) > .time-head { margin-bottom: 0; }
+.time-block:not([open]) > .time-head::after { content: '\25B8'; }
 
 /* ------------------------------------------------------ grouped by cinema */
 
@@ -589,7 +604,7 @@ a.session:hover .notes { color: var(--text-2); }
   /* One scrollable row instead of three wrapped ones: the filter bar sits above
      every listing, and every wrapped row costs a film card's worth of space. */
   .filters {
-    padding: 9px 12px 2px;
+    padding: 8px 12px 2px;
     flex-wrap: nowrap;
     overflow-x: auto;
     scrollbar-width: none;
@@ -598,16 +613,18 @@ a.session:hover .notes { color: var(--text-2); }
   .filters::-webkit-scrollbar { display: none; }
   .filters > * { flex: 0 0 auto; }
   .chip, .select { height: 36px; }
-  .nearbar { padding: 9px 12px 0; }
+  .nearbar { padding: 6px 12px 0; }
   .near-form { max-width: none; }
   .near-me, #near-q { height: 38px; }
   .near-me { font-size: 14px; }
   .near-icon { width: 16px; height: 16px; }
-  .main { padding: 14px 12px 56px; }
+  .main { padding: 12px 12px 56px; }
   .film-times { display: none; }
+  .day-head { margin-bottom: 10px; }
   .day-head h1 { font-size: 18px; }
-  .view-bar { max-width: none; }
-  .seg-btn { height: 40px; font-size: 13.5px; }
+  .count-sessions { display: none; }
+  .view-bar { max-width: none; margin: 6px 0 0; }
+  .seg-btn { height: 38px; font-size: 13.5px; }
   .film-hero { gap: 12px; }
   .film-hero h1 { font-size: 20px; }
   .poster-lg { width: 72px; height: 106px; }
