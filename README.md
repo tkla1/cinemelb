@@ -189,10 +189,35 @@ or roughly 170 KB gzipped over the wire. Attribute spellings are canonicalised
 and rows are sorted by date then minute so a day is a contiguous slice.
 
 The UI reads that one file once and then works in memory: a day by day rail,
-"leaves time to get there" (hides sessions starting within 20 minutes),
 accessible-screening and chain filters, per-film pages with every remaining
-session grouped by day and venue, and title search with suggestions. Routing is
-hash-based, so a deep link never asks the host for a path.
+session, and title search with suggestions. Routing is hash-based, so a deep
+link never asks the host for a path.
+
+**Grouping.** A day holds ~1,900 sessions, so the listing can be pivoted three
+ways without ever rendering 1,900 rows:
+
+| Group by | Shape |
+|---|---|
+| **By film** (default) | one card per film, with its cinemas and next times |
+| **By cinema** | one expandable card per venue, listing its films and sessions |
+| **By time** | the same film cards, split into morning / afternoon / evening / late night |
+
+A film page offers the same pivot: **by day** (day → venue), **by cinema**
+(venue → day), or **by time** (time of day → day → venue). The choice is a view
+preference, so it is remembered in `localStorage` and survives a reload.
+
+**Filters.** Beyond accessible screenings and chain, two session-level filters
+cut the list down:
+
+- **After** a time of day — `After 7pm` keeps only sessions that start at or
+  after 19:00, on whichever day you are looking at.
+- **Within** a drive time — `Within 30 min drive` keeps only sessions at venues
+  reachable in that many minutes, and only appears once a location is set.
+
+"Leaves time to get there" becomes travel-aware when a place is set: it hides
+sessions starting sooner than the drive to the venue plus 20 minutes, not a flat
+20 minutes. Filters are in memory only; the grouping choice is the one thing
+persisted.
 
 **"Near me"** takes either a typed suburb or address, or the browser's own
 location (`navigator.geolocation`, which needs HTTPS and your permission), then

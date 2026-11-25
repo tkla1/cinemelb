@@ -245,6 +245,29 @@ a:hover { color: var(--accent); }
   max-width: 16rem;
 }
 
+/* ---------------------------------------------------------- view switcher */
+
+.view-bar {
+  display: flex;
+  width: 100%; max-width: 340px;
+  margin: 0 0 14px;
+  border: 1px solid var(--line); border-radius: 999px;
+  overflow: hidden; background: var(--panel);
+}
+.seg-btn {
+  flex: 1 1 auto; height: 36px; padding: 0 12px;
+  border: 0; background: none; color: var(--text-3);
+  font: inherit; font-size: 13px; font-weight: 540;
+  white-space: nowrap; cursor: pointer;
+}
+.seg-btn + .seg-btn { border-left: 1px solid var(--line); }
+.seg-btn:hover { color: var(--text); background: var(--card); }
+.seg-btn.is-on { background: var(--accent); color: var(--accent-ink); font-weight: 620; }
+.seg-btn.is-on:hover { background: var(--accent); color: var(--accent-ink); }
+
+.chip-clear { border-style: dashed; color: var(--text-3); }
+.chip-clear:hover { color: var(--text); }
+
 /* ------------------------------------------------------------ location bar */
 
 .nearbar {
@@ -482,6 +505,33 @@ a.session:hover .notes { color: var(--text-2); }
 .day-block .venue { margin-bottom: 10px; }
 .day-block .venue:last-child { margin-bottom: 0; }
 
+/* -------------------------------------------------------- grouped by time */
+
+.time-block { margin-bottom: 26px; }
+.time-block:last-child { margin-bottom: 0; }
+.time-head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 10px; font-size: 15px; font-weight: 650; letter-spacing: -.01em;
+}
+.time-head .count { font-weight: 400; }
+
+/* ------------------------------------------------------ grouped by cinema */
+
+.cinema-block {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cinema-block:first-child { padding-top: 2px; }
+.cinema-block:last-child { border-bottom: 0; padding-bottom: 0; }
+.cinema-block .venue-head { margin-bottom: 6px; }
+.day-sub { margin-top: 9px; }
+.day-sub h4 {
+  margin: 0 0 5px;
+  font-size: 11px; font-weight: 620;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-3);
+}
+
 /* ------------------------------------------------------------- empty/error */
 
 .empty {
@@ -536,7 +586,18 @@ a.session:hover .notes { color: var(--text-2); }
   .brand-name { display: none; }
   .clock { display: none; }
   .rail { padding: 7px 12px; }
-  .filters { padding: 9px 12px 0; }
+  /* One scrollable row instead of three wrapped ones: the filter bar sits above
+     every listing, and every wrapped row costs a film card's worth of space. */
+  .filters {
+    padding: 9px 12px 2px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .filters::-webkit-scrollbar { display: none; }
+  .filters > * { flex: 0 0 auto; }
+  .chip, .select { height: 36px; }
   .nearbar { padding: 9px 12px 0; }
   .near-form { max-width: none; }
   .near-me, #near-q { height: 38px; }
@@ -545,6 +606,8 @@ a.session:hover .notes { color: var(--text-2); }
   .main { padding: 14px 12px 56px; }
   .film-times { display: none; }
   .day-head h1 { font-size: 18px; }
+  .view-bar { max-width: none; }
+  .seg-btn { height: 40px; font-size: 13.5px; }
   .film-hero { gap: 12px; }
   .film-hero h1 { font-size: 20px; }
   .poster-lg { width: 72px; height: 106px; }

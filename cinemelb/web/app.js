@@ -20,6 +20,37 @@
   // so the page and the CLI quote the same figure for the same venue.
   var DRIVE_KMH = 22;
 
+  // Session filters. "after" is a minute past midnight, so one preset works on
+  // every day; "within" is a drive-time ceiling in minutes and only appears
+  // once a place is set. Both are session-level, so they behave identically in
+  // the day list and on a film page.
+  var AFTER_PRESETS = [
+    [0, 'Any time'],
+    [12 * 60, 'After 12pm'],
+    [15 * 60, 'After 3pm'],
+    [17 * 60, 'After 5pm'],
+    [18 * 60, 'After 6pm'],
+    [19 * 60, 'After 7pm'],
+    [20 * 60, 'After 8pm'],
+    [21 * 60, 'After 9pm']
+  ];
+  var WITHIN_PRESETS = [
+    [0, 'Any distance'],
+    [10, 'Within 10 min drive'],
+    [20, 'Within 20 min drive'],
+    [30, 'Within 30 min drive'],
+    [45, 'Within 45 min drive'],
+    [60, 'Within 60 min drive']
+  ];
+  // Time-of-day buckets for the "by time" grouping. A day holds ~1,900
+  // sessions, so a flat timeline is unreadable; buckets keep the pivot useful.
+  var TIME_BUCKETS = [
+    { from: 0, to: 12 * 60, name: 'Morning' },
+    { from: 12 * 60, to: 17 * 60, name: 'Afternoon' },
+    { from: 17 * 60, to: 21 * 60, name: 'Evening' },
+    { from: 21 * 60, to: 24 * 60, name: 'Late night' }
+  ];
+
   // ------------------------------------------------------------------- state
   var S = {
     bundle: null,
@@ -32,7 +63,9 @@
     byFilm: null,
     today: 0,          // index into bundle.dates
     nowMinute: 0,
-    filters: { accessible: false, chain: '', later: false },
+    filters: { accessible: false, chain: '', later: false, after: 0, within: 0 },
+    group: 'film',       // day view: 'film' | 'cinema' | 'time'
+    filmGroup: 'day',    // film view: 'day' | 'cinema' | 'time'
     place: null,       // { name, lat, lon, source } once a location is set
     route: { name: 'day', date: null, film: null },
     chains: []
@@ -308,6 +341,9 @@
 
   function clearPlace() {
     S.place = null;
+    // The drive-time filter is meaningless without a place, and leaving it set
+    // would keep hiding sessions behind a control that is no longer visible.
+    S.filters.within = 0;
     try { localStorage.removeItem('cinemelb-place'); } catch (e) { /* private mode */ }
     var input = document.getElementById('near-q');
     if (input) input.value = '';
@@ -448,12 +484,30 @@
     return S.rowMinute[row] - S.nowMinute < LEAD_MINUTES;
   }
 
+  /* "Leaves time to get there" is travel-aware once a place is set: a session
+     five minutes away across town is not catchable, while one five minutes
+     away next door is. The fixed LEAD_MINUTES stays the floor. */
+  function leavesTooLittleTime(row) {
+    if (S.rowDate[row] !== S.today) return false;
+    var lead = LEAD_MINUTES;
+    if (S.place) {
+      var km = kmTo(S.rowCinema[row]);
+      if (km != null) lead = Math.max(lead, driveMinutes(km) + 5);
+    }
+    return S.rowMinute[row] - S.nowMinute < lead;
+  }
+
   function rowPasses(row) {
     if (S.filters.accessible && !hasAttrs(row, ['CC', 'AD', 'Open Captions'])) return false;
     // Cinema rows are arrays: [name, chain, suburb, ...]. Reaching for .chain
     // here silently compared against undefined and hid every row.
     if (S.filters.chain && S.cinemas[S.rowCinema[row]][1] !== S.filters.chain) return false;
-    if (S.filters.later && isTooSoon(row)) return false;
+    if (S.filters.later && leavesTooLittleTime(row)) return false;
+    if (S.filters.after && S.rowMinute[row] < S.filters.after) return false;
+    if (S.filters.within) {
+      var km = kmTo(S.rowCinema[row]);
+      if (km == null || driveMinutes(km) > S.filters.within) return false;
+    }
     return true;
   }
 
@@ -640,7 +694,52 @@
       }
       html += '</select>';
     }
+
+    html += '<select id="after" class="select" aria-label="Show sessions starting after">';
+    for (var a = 0; a < AFTER_PRESETS.length; a++) {
+      var ap = AFTER_PRESETS[a];
+      html += '<option value="' + ap[0] + '"' +
+        (ap[0] === S.filters.after ? ' selected' : '') + '>' + esc(ap[1]) + '</option>';
+    }
+    html += '</select>';
+
+    // Distance only makes sense once there is a point to measure from.
+    if (S.place) {
+      html += '<select id="within" class="select" aria-label="Show sessions within a drive time">';
+      for (var w = 0; w < WITHIN_PRESETS.length; w++) {
+        var wp = WITHIN_PRESETS[w];
+        html += '<option value="' + wp[0] + '"' +
+          (wp[0] === S.filters.within ? ' selected' : '') + '>' + esc(wp[1]) + '</option>';
+      }
+      html += '</select>';
+    }
+
+    if (filtersActive()) {
+      html += '<button type="button" class="chip chip-clear" data-clear>Clear</button>';
+    }
     box.innerHTML = html;
+  }
+
+  function filtersActive() {
+    return !!(S.filters.accessible || S.filters.chain || S.filters.later ||
+      S.filters.after || S.filters.within);
+  }
+
+  /* The "group by" control. It is rendered into the results, not the filter
+     bar, because it changes the shape of the list rather than its contents. */
+  function viewBar(kind) {
+    var options = kind === 'film'
+      ? [['day', 'By day'], ['cinema', 'By cinema'], ['time', 'By time']]
+      : [['film', 'By film'], ['cinema', 'By cinema'], ['time', 'By time']];
+    var current = kind === 'film' ? S.filmGroup : S.group;
+    var html = '<div class="view-bar" role="group" aria-label="Group sessions">';
+    for (var i = 0; i < options.length; i++) {
+      var on = options[i][0] === current;
+      html += '<button type="button" class="seg-btn' + (on ? ' is-on' : '') +
+        '" data-view="' + options[i][0] + '" data-view-kind="' + kind +
+        '" aria-pressed="' + on + '">' + esc(options[i][1]) + '</button>';
+    }
+    return html + '</div>';
   }
 
   function renderDay(main, dayIso) {
@@ -654,32 +753,32 @@
       return;
     }
 
-    var rows = S.byDate.get(dateIdx) || [];
-    var groups = new Map();
-    for (var i = 0; i < rows.length; i++) {
-      var row = rows[i];
+    var all = S.byDate.get(dateIdx) || [];
+    var rows = [];
+    var films = new Set();
+    for (var i = 0; i < all.length; i++) {
+      var row = all[i];
       if (!rowPasses(row)) continue;
       if (isPast(row)) continue;
-      var film = S.rowFilm[row];
-      var g = groups.get(film);
-      if (!g) groups.set(film, g = []);
-      g.push(row);
+      rows.push(row);
+      films.add(S.rowFilm[row]);
     }
 
     var rel = relative(dayIso);
     var head = '<div class="day-head">' +
       '<h1>' + esc(longDay(dayIso)) + '</h1>' +
       (rel ? '<span class="badge">' + esc(rel) + '</span>' : '') +
-      '<span class="count">' + groups.size + ' film' + (groups.size === 1 ? '' : 's') +
+      '<span class="count">' + films.size + ' film' + (films.size === 1 ? '' : 's') +
+      ' · ' + rows.length + ' session' + (rows.length === 1 ? '' : 's') +
       '</span></div>';
 
-    if (!groups.size) {
+    if (!rows.length) {
       // "Nothing left" and "nothing matched your filters" are different facts,
       // and telling a user their day is over when a chip hid everything is a lie.
       var upcoming = 0;
-      for (var u = 0; u < rows.length; u++) if (!isPast(rows[u])) upcoming++;
+      for (var u = 0; u < all.length; u++) if (!isPast(all[u])) upcoming++;
       var body;
-      if (!rows.length) {
+      if (!all.length) {
         body = '<h2>No screenings on that day</h2>' +
           '<p>This build covers ' + esc(shortDay(dates[0])) + ' to ' +
           esc(shortDay(dates[dates.length - 1])) + '.</p>';
@@ -697,8 +796,28 @@
       return;
     }
 
-    // Order by distance when a location is set, otherwise by the next session
-    // still to come, so the page reads as a schedule.
+    var html = head + viewBar('day');
+    if (S.group === 'cinema') html += dayByCinema(rows);
+    else if (S.group === 'time') html += dayByTime(rows);
+    else html += dayByFilm(rows);
+    main.innerHTML = html;
+    document.title = shortDay(dayIso) + ' — cinemelb';
+  }
+
+  function groupByFilm(rows) {
+    var groups = new Map();
+    for (var i = 0; i < rows.length; i++) {
+      var f = S.rowFilm[rows[i]];
+      var g = groups.get(f);
+      if (!g) groups.set(f, g = []);
+      g.push(rows[i]);
+    }
+    return groups;
+  }
+
+  /* Order by distance when a location is set, otherwise by the next session
+     still to come, so the page reads as a schedule. */
+  function orderFilms(groups) {
     var order = Array.from(groups.keys());
     if (S.place) {
       order.sort(function (a, b) {
@@ -713,14 +832,109 @@
         return nextTime(groups.get(a)) - nextTime(groups.get(b));
       });
     }
+    return order;
+  }
 
-    var html = head + '<div class="films">';
+  function dayByFilm(rows) {
+    var groups = groupByFilm(rows);
+    var order = orderFilms(groups);
+    var html = '<div class="films">';
     for (var k = 0; k < order.length; k++) {
       html += filmCard(order[k], groups.get(order[k]));
     }
-    html += '</div>';
-    main.innerHTML = html;
-    document.title = shortDay(dayIso) + ' — cinemelb';
+    return html + '</div>';
+  }
+
+  /* A day holds ~1,900 sessions, so "by cinema" collapses each venue into one
+     expandable card rather than listing every session. */
+  function dayByCinema(rows) {
+    var byCinema = new Map();
+    for (var i = 0; i < rows.length; i++) {
+      var c = S.rowCinema[rows[i]];
+      var g = byCinema.get(c);
+      if (!g) byCinema.set(c, g = []);
+      g.push(rows[i]);
+    }
+    var order = Array.from(byCinema.keys());
+    order.sort(function (a, b) {
+      if (S.place) {
+        var da = kmTo(a), db = kmTo(b);
+        if (da != null || db != null) {
+          return (da == null ? Infinity : da) - (db == null ? Infinity : db);
+        }
+      }
+      return S.cinemas[a][0].localeCompare(S.cinemas[b][0]);
+    });
+
+    var html = '<div class="films">';
+    for (var k = 0; k < order.length; k++) {
+      html += cinemaCard(order[k], byCinema.get(order[k]));
+    }
+    return html + '</div>';
+  }
+
+  function cinemaCard(cinemaIdx, rows) {
+    var cinema = S.cinemas[cinemaIdx];
+    var byFilm = groupByFilm(rows);
+    var order = orderFilms(byFilm);
+    var first = 24 * 60;
+    for (var i = 0; i < rows.length; i++) first = Math.min(first, S.rowMinute[rows[i]]);
+
+    var nearKm = S.place ? kmTo(cinemaIdx) : null;
+    var meta = byFilm.size + ' film' + (byFilm.size === 1 ? '' : 's') +
+      ' · ' + rows.length + ' session' + (rows.length === 1 ? '' : 's');
+    if (nearKm != null) {
+      meta = fmtKm(nearKm) + ' · ~' + driveMinutes(nearKm) + ' min · ' + meta;
+    }
+
+    var body = '';
+    for (var k = 0; k < order.length; k++) {
+      var film = S.films[order[k]];
+      var times = byFilm.get(order[k]).slice().sort(function (a, b) {
+        return S.rowMinute[a] - S.rowMinute[b];
+      });
+      body += '<div class="venue">' +
+        '<div class="venue-head"><span class="venue-name">' + esc(film[1]) + '</span>' +
+        (film[3] ? '<span class="venue-sub">' + esc(film[3]) + '</span>' : '') +
+        (film[4] ? '<span class="venue-sub">' + film[4] + ' min</span>' : '') +
+        '</div><div class="sessions">' + sessions(times) + '</div></div>';
+    }
+
+    return '<details class="film cinema-card">' +
+      '<summary><div class="film-main">' +
+        '<h2 class="film-title">' + esc(cinema[0]) + '</h2>' +
+        '<p class="film-meta">' + esc(meta) + '</p>' +
+      '</div>' +
+      '<div class="film-times"><span class="time">from ' + clock(first) + '</span></div>' +
+      '</summary>' +
+      '<div class="film-body">' + body + '</div></details>';
+  }
+
+  /* "By time" pivots the day: the same film cards, but split into the part of
+     the day their sessions fall in. A film playing at 1pm and 7pm appears in
+     both the afternoon and the evening, which is the point of the pivot. */
+  function dayByTime(rows) {
+    var html = '';
+    for (var b = 0; b < TIME_BUCKETS.length; b++) {
+      var bucket = TIME_BUCKETS[b];
+      var inBucket = [];
+      for (var i = 0; i < rows.length; i++) {
+        var m = S.rowMinute[rows[i]];
+        if (m >= bucket.from && m < bucket.to) inBucket.push(rows[i]);
+      }
+      if (!inBucket.length) continue;
+      var groups = groupByFilm(inBucket);
+      var order = orderFilms(groups);
+      html += '<div class="time-block"><h2 class="time-head">' + esc(bucket.name) +
+        '<span class="count">' + inBucket.length + ' session' +
+        (inBucket.length === 1 ? '' : 's') + ' · ' + groups.size + ' film' +
+        (groups.size === 1 ? '' : 's') + '</span></h2><div class="films">';
+      for (var k = 0; k < order.length; k++) {
+        html += filmCard(order[k], groups.get(order[k]));
+      }
+      html += '</div></div>';
+    }
+    return html;
   }
 
   function nextTime(rows) {
@@ -794,13 +1008,13 @@
       '</summary>' +
       '<div class="film-body">' +
         (film[7] ? '<p class="synopsis">' + esc(film[7]) + '</p>' : '') +
-        venueBlocks(filmIdx, sorted) +
+        venueBlocks(sorted) +
         '<p class="film-link"><a href="#/film/' + encodeURIComponent(film[0]) +
         '">All times for this film →</a></p>' +
       '</div></details>';
   }
 
-  function venueBlocks(filmIdx, rows) {
+  function venueBlocks(rows) {
     var byVenue = new Map();
     for (var i = 0; i < rows.length; i++) {
       var c = S.rowCinema[rows[i]];
@@ -935,26 +1149,133 @@
       '</div></div>';
 
     if (!dayOrder.length) {
-      main.innerHTML = html + '<div class="empty"><h2>No sessions left</h2>' +
-        '<p>This film has no upcoming screenings in this build.</p></div>';
+      var unfiltered = 0;
+      var allRows = S.byFilm.get(filmIdx) || [];
+      for (var u = 0; u < allRows.length; u++) if (!isPast(allRows[u])) unfiltered++;
+      var body;
+      if (!unfiltered) {
+        body = '<h2>No sessions left</h2><p>This film has no upcoming screenings in this build.</p>';
+      } else {
+        body = '<h2>No sessions match those filters</h2><p>' + unfiltered +
+          ' upcoming session' + (unfiltered === 1 ? '' : 's') +
+          ' hidden by the current filters. ' +
+          '<button type="button" class="btn" data-clear>Clear filters</button></p>';
+      }
+      main.innerHTML = html + '<div class="empty">' + body + '</div>';
       document.title = film[1] + ' — cinemelb';
       return;
     }
 
     html += '<div class="section-head"><h2>All sessions</h2><span class="count">' +
       rows.length + ' across ' + dayOrder.length + ' day' +
-      (dayOrder.length === 1 ? '' : 's') + '</span></div>';
+      (dayOrder.length === 1 ? '' : 's') + '</span></div>' + viewBar('film');
 
+    if (S.filmGroup === 'cinema') html += filmByCinema(rows);
+    else if (S.filmGroup === 'time') html += filmByTime(rows);
+    else html += filmByDay(rows, byDate, dayOrder);
+    main.innerHTML = html;
+    document.title = film[1] + ' — cinemelb';
+  }
+
+  function filmByDay(rows, byDate, dayOrder) {
+    var html = '';
     for (var k = 0; k < dayOrder.length; k++) {
       var di = dayOrder[k];
       var iso = S.bundle.dates[di];
       var rel = relative(iso);
       html += '<div class="day-block"><h3>' + esc(longDay(iso)) +
         (rel ? ' <span class="badge">' + esc(rel) + '</span>' : '') +
-        '</h3>' + venueBlocks(filmIdx, byDate.get(di)) + '</div>';
+        '</h3>' + venueBlocks(byDate.get(di)) + '</div>';
     }
-    main.innerHTML = html;
-    document.title = film[1] + ' — cinemelb';
+    return html;
+  }
+
+  /* Cinema first, then the days it runs on: "where can I see this, and when". */
+  function filmByCinema(rows) {
+    var byCinema = new Map();
+    for (var i = 0; i < rows.length; i++) {
+      var c = S.rowCinema[rows[i]];
+      var g = byCinema.get(c);
+      if (!g) byCinema.set(c, g = []);
+      g.push(rows[i]);
+    }
+    var order = Array.from(byCinema.keys());
+    order.sort(function (a, b) {
+      if (S.place) {
+        var da = kmTo(a), db = kmTo(b);
+        if (da != null || db != null) {
+          return (da == null ? Infinity : da) - (db == null ? Infinity : db);
+        }
+      }
+      return S.cinemas[a][0].localeCompare(S.cinemas[b][0]);
+    });
+
+    var html = '';
+    for (var k = 0; k < order.length; k++) {
+      var cinema = S.cinemas[order[k]];
+      var nearKm = S.place ? kmTo(order[k]) : null;
+      var byDate = new Map();
+      var list = byCinema.get(order[k]);
+      for (var j = 0; j < list.length; j++) {
+        var d = S.rowDate[list[j]];
+        var g = byDate.get(d);
+        if (!g) byDate.set(d, g = []);
+        g.push(list[j]);
+      }
+      var days = Array.from(byDate.keys()).sort(function (a, b) { return a - b; });
+
+      html += '<div class="cinema-block"><div class="venue-head">' +
+        '<span class="venue-name">' + esc(cinema[0]) + '</span>' +
+        (cinema[2] ? '<span class="venue-sub">' + esc(cinema[2]) + '</span>' : '') +
+        (nearKm != null ? '<span class="venue-dist">' + fmtKm(nearKm) + ' · ' +
+          fmtDrive(nearKm) + '</span>' : '') +
+        '</div>';
+      for (var dd = 0; dd < days.length; dd++) {
+        var iso = S.bundle.dates[days[dd]];
+        html += '<div class="day-sub"><h4>' + esc(shortDay(iso)) + '</h4>' +
+          '<div class="sessions">' + sessions(byDate.get(days[dd])) + '</div></div>';
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
+  /* Time of day first, then the day: "I want this in the evening — which
+     nights and which cinemas". */
+  function filmByTime(rows) {
+    var html = '';
+    for (var b = 0; b < TIME_BUCKETS.length; b++) {
+      var bucket = TIME_BUCKETS[b];
+      var inBucket = [];
+      for (var i = 0; i < rows.length; i++) {
+        var m = S.rowMinute[rows[i]];
+        if (m >= bucket.from && m < bucket.to) inBucket.push(rows[i]);
+      }
+      if (!inBucket.length) continue;
+
+      var byDate = new Map();
+      for (var j = 0; j < inBucket.length; j++) {
+        var d = S.rowDate[inBucket[j]];
+        var g = byDate.get(d);
+        if (!g) byDate.set(d, g = []);
+        g.push(inBucket[j]);
+      }
+      var days = Array.from(byDate.keys()).sort(function (a, b) { return a - b; });
+
+      html += '<div class="time-block"><h2 class="time-head">' + esc(bucket.name) +
+        '<span class="count">' + inBucket.length + ' session' +
+        (inBucket.length === 1 ? '' : 's') + ' · ' + days.length + ' day' +
+        (days.length === 1 ? '' : 's') + '</span></h2>';
+      for (var dd = 0; dd < days.length; dd++) {
+        var iso = S.bundle.dates[days[dd]];
+        var rel = relative(iso);
+        html += '<div class="day-block"><h3>' + esc(longDay(iso)) +
+          (rel ? ' <span class="badge">' + esc(rel) + '</span>' : '') +
+          '</h3>' + venueBlocks(byDate.get(days[dd])) + '</div>';
+      }
+      html += '</div>';
+    }
+    return html;
   }
 
   function fail(message) {
@@ -1074,18 +1395,41 @@
     if (list.length) openFilm(S.films[list[0].i][0]);
   }
 
-  function onFilter(event) {
+  /* Chips toggle on click; selects only react to change. Handling a select on
+     click would re-render the bar while its native menu is still open. */
+  function onChip(event) {
     var chip = event.target.closest('[data-filter]');
-    if (chip) {
-      var key = chip.getAttribute('data-filter');
-      S.filters[key] = !S.filters[key];
-      render();
-      return;
-    }
-    if (event.target.id === 'chain') {
-      S.filters.chain = event.target.value;
-      render();
-    }
+    if (!chip) return;
+    var key = chip.getAttribute('data-filter');
+    S.filters[key] = !S.filters[key];
+    render();
+  }
+
+  function onSelect(event) {
+    var id = event.target.id;
+    if (id === 'chain') S.filters.chain = event.target.value;
+    else if (id === 'after') S.filters.after = parseInt(event.target.value, 10) || 0;
+    else if (id === 'within') S.filters.within = parseInt(event.target.value, 10) || 0;
+    else return;
+    render();
+  }
+
+  function onView(event) {
+    var btn = event.target.closest('[data-view]');
+    if (!btn) return;
+    var kind = btn.getAttribute('data-view-kind');
+    var value = btn.getAttribute('data-view');
+    if (kind === 'film') S.filmGroup = value;
+    else S.group = value;
+    saveView();
+    render();
+  }
+
+  function saveView() {
+    try {
+      localStorage.setItem('cinemelb-view',
+        JSON.stringify({ group: S.group, filmGroup: S.filmGroup }));
+    } catch (e) { /* private mode */ }
   }
 
   function onTheme() {
@@ -1119,6 +1463,11 @@
           var savedInput = document.getElementById('near-q');
           if (savedInput) savedInput.value = p.name || '';
         }
+      }
+      var savedView = JSON.parse(localStorage.getItem('cinemelb-view') || 'null');
+      if (savedView) {
+        if (savedView.group) S.group = savedView.group;
+        if (savedView.filmGroup) S.filmGroup = savedView.filmGroup;
       }
     } catch (e) { /* private mode */ }
 
@@ -1176,13 +1525,14 @@
 
     document.addEventListener('click', function (event) {
       if (event.target.closest('[data-clear]')) {
-        S.filters = { accessible: false, chain: '', later: false };
+        S.filters = { accessible: false, chain: '', later: false, after: 0, within: 0 };
         render();
       }
     });
 
-    document.getElementById('filters').addEventListener('click', onFilter);
-    document.getElementById('filters').addEventListener('change', onFilter);
+    document.getElementById('filters').addEventListener('click', onChip);
+    document.getElementById('filters').addEventListener('change', onSelect);
+    document.getElementById('main').addEventListener('click', onView);
     document.getElementById('theme').addEventListener('click', onTheme);
     window.addEventListener('hashchange', function () {
       closeSuggest();

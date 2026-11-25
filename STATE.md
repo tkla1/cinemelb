@@ -69,6 +69,19 @@ the built bundle and again against the live deploy):
    resolves those through its `/poster/` endpoint (verified 200 for all 12) and
    Nova resolves against its own site.
 
+Grouping and time filters were added after the location work. A day holds ~1,900
+sessions, so the listing pivots three ways — by film (default), by cinema (one
+expandable card per venue) and by time (film cards split into morning /
+afternoon / evening / late night). A film page offers the same pivot: by day,
+by cinema or by time. Two session-level filters sit alongside the existing chips:
+**After** a time of day, and **Within** a drive time once a location is set.
+"Leaves time to get there" is now travel-aware — it uses the drive estimate plus
+20 minutes rather than a flat 20. The grouping choice is a view preference and
+is persisted in `localStorage`; filters are in memory only. Clearing the location
+also clears the drive-time filter, so a hidden control cannot keep hiding
+sessions. Verified in Chrome against both the built bundle and the live deploy,
+desktop and iPhone 13 viewport, with no console errors.
+
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 
