@@ -279,10 +279,10 @@
       "arthouse",
       "university"
     ],
-    "notes": "Campus cinema; programme is term-dependent.",
+    "notes": "Not a public cinema: the university site returns 403 to non-browser clients and advertises no public film program.",
     "region": "melbourne",
     "metro": true,
-    "active": true,
+    "active": false,
     "flicks_slug": ""
   },
   {
@@ -978,10 +978,10 @@
       "festival",
       "heritage"
     ],
-    "notes": "Primarily a live venue; runs film festivals and screenings.",
+    "notes": "Not a cinema: forumtheatre.com.au does not resolve; the venue now runs as Forum Melbourne (forummelbourne.com.au), a live-music venue with no film sessions.",
     "region": "melbourne",
     "metro": true,
-    "active": true,
+    "active": false,
     "flicks_slug": ""
   },
   {
@@ -1056,10 +1056,10 @@
       "outdoor",
       "seasonal"
     ],
-    "notes": "Open-air screen on the roof of Curtin House; summer season only.",
+    "notes": "Dormant: stale WordPress site with no film program, no booking links and no what's-on page (/whats-on and /movies both 404). Last content is a Mother's Day event. Re-check in summer season.",
     "region": "melbourne",
     "metro": true,
-    "active": true,
+    "active": false,
     "flicks_slug": ""
   },
   {
@@ -1083,10 +1083,10 @@
       "festival",
       "heritage"
     ],
-    "notes": "RMIT's restored 1924 cinema; screens films and festivals.",
+    "notes": "Not a cinema: the registered URL is the Sydney Capitol Theatre. The Melbourne Capitol at 113 Swanston St is now a retail arcade, not a screening venue. Website field is wrong.",
     "region": "melbourne",
     "metro": true,
-    "active": true,
+    "active": false,
     "flicks_slug": ""
   },
   {
@@ -1556,10 +1556,10 @@
       "festival",
       "heritage"
     ],
-    "notes": "Live music venue that also runs film nights.",
+    "notes": "Not a cinema: the website is a 114-byte empty shell; the venue is a live-music venue with no film program.",
     "region": "melbourne",
     "metro": true,
-    "active": true,
+    "active": false,
     "flicks_slug": ""
   },
   {

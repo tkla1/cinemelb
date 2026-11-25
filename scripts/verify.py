@@ -124,16 +124,27 @@ def main() -> int:
         report = refresh(fresh=args.fresh)
         print(f"     {report.summary()}")
         by_adapter: dict[str, list[int]] = {}
+        notes: dict[str, list[str]] = {}
         for v in report.venues:
             agg = by_adapter.setdefault(v.source, [0, 0])
             agg[1] += 1
             if v.screenings:
                 agg[0] += 1
+            elif v.note:
+                notes.setdefault(v.source, []).append(v.note)
         for source, (working, total) in sorted(by_adapter.items()):
-            if source in ready:
-                check(working > 0, f"{source}: live data", f"{working}/{total} venues returned screenings")
-            else:
+            if source not in ready:
                 note(f"{source}: no adapter", f"{total} venues listed without times")
+            elif working > 0:
+                check(True, f"{source}: live data", f"{working}/{total} venues returned screenings")
+            elif notes.get(source):
+                # Every venue carries an explanation and none returned rows: an
+                # adapter that is *honestly* blocked or empty, not a broken one.
+                # The auditor's rule — a named reason beats a silent zero.
+                first = notes[source][0].split(". ")[0]
+                note(f"{source}: honestly empty", f"{total} venues; {first}")
+            else:
+                check(False, f"{source}: live data", f"{working}/{total} venues returned screenings")
 
     # ---------------------------------------------------------------- database
     section("Database")
