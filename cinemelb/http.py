@@ -91,13 +91,49 @@ class Http:
             self._local.session = s
         return s
 
-    def _cache_path(self, url: str, headers: Mapping[str, str]) -> Path:
+    def _cache_path(self, url: str, headers: Mapping[str, str], body: str = "") -> Path:
         key_bits = [url]
         for h in KEYED_HEADERS:
             v = {k.lower(): val for k, val in headers.items()}.get(h, "")
             key_bits.append(f"{h}={v}")
+        # A POST body changes the response just as much as the URL does (a
+        # GraphQL endpoint returns a different document per query), so it has
+        # to be part of the cache key.
+        if body:
+            key_bits.append("body=" + hashlib.sha256(body.encode()).hexdigest())
         key = hashlib.sha256("|".join(key_bits).encode()).hexdigest()[:32]
         return self.cache_dir / key[0:2] / f"{key}.json"
+
+    def _cache_read(self, path: Path) -> Response | None:
+        try:
+            blob = json.loads(path.read_text(encoding="utf-8"))
+            return Response(
+                url=blob["url"],
+                status=blob["status"],
+                text=blob["text"],
+                content_type=blob.get("content_type", ""),
+                from_cache=True,
+            )
+        except (json.JSONDecodeError, KeyError):
+            path.unlink(missing_ok=True)
+            return None
+
+    def _cache_write(self, path: Path, url: str, r: Any) -> Response:
+        resp = Response(
+            url=url,
+            status=r.status_code,
+            text=r.text,
+            content_type=r.headers.get("Content-Type", ""),
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {"url": url, "status": resp.status, "text": resp.text,
+                 "content_type": resp.content_type}
+            ),
+            encoding="utf-8",
+        )
+        return resp
 
     def _throttle(self, url: str) -> None:
         host = url.split("/")[2] if "//" in url else url
@@ -130,17 +166,9 @@ class Http:
         if not fresh and not self.force_refresh and path.exists():
             age = time.time() - path.stat().st_mtime
             if age < self.ttl:
-                try:
-                    blob = json.loads(path.read_text(encoding="utf-8"))
-                    return Response(
-                        url=url,
-                        status=blob["status"],
-                        text=blob["text"],
-                        content_type=blob.get("content_type", ""),
-                        from_cache=True,
-                    )
-                except (json.JSONDecodeError, KeyError):
-                    path.unlink(missing_ok=True)
+                cached = self._cache_read(path)
+                if cached is not None:
+                    return cached
 
         last_err: Exception | None = None
         for attempt in range(self.max_retries + 1):
@@ -153,21 +181,63 @@ class Http:
                 continue
 
             if r.status_code in allow_status or r.ok:
-                resp = Response(
-                    url=url,
-                    status=r.status_code,
-                    text=r.text,
-                    content_type=r.headers.get("Content-Type", ""),
-                )
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(
-                    json.dumps(
-                        {"url": url, "status": resp.status, "text": resp.text,
-                         "content_type": resp.content_type}
-                    ),
-                    encoding="utf-8",
-                )
-                return resp
+                return self._cache_write(path, url, r)
+
+            if r.status_code in (403, 429, 500, 502, 503, 504) and attempt < self.max_retries:
+                time.sleep(1.0 * (attempt + 1) + random.random())
+                last_err = FetchError(url, r.status_code)
+                continue
+
+            raise FetchError(url, r.status_code, r.text[:200])
+
+        raise FetchError(url, None, str(last_err))
+
+    def post_json(
+        self,
+        url: str,
+        payload: Mapping[str, Any],
+        *,
+        headers: Mapping[str, str] | None = None,
+        fresh: bool = False,
+        allow_status: tuple[int, ...] = (),
+    ) -> Response:
+        """POST a JSON body, with the same cache/throttle/retry semantics.
+
+        Some platforms only speak POST — the Indy Systems GraphQL endpoint
+        returns 404 for a GET — and a POST body is part of what identifies the
+        response, so it is folded into the cache key.
+        """
+        headers = dict(headers or {})
+        headers.setdefault("Content-Type", "application/json")
+        body = json.dumps(payload, sort_keys=True)
+        # Both the body *and* the identity headers (site-id, client-type) decide
+        # what comes back, so the cache key has to cover them.
+        key_material = json.dumps(
+            {"headers": sorted(headers.items()), "body": body}, sort_keys=True
+        )
+        path = self._cache_path(url, headers, key_material)
+        if not fresh and not self.force_refresh and path.exists():
+            age = time.time() - path.stat().st_mtime
+            if age < self.ttl:
+                cached = self._cache_read(path)
+                if cached is not None:
+                    return cached
+
+        last_err: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            self._throttle(url)
+            try:
+                r = self._session().post(url, headers=headers, data=body,
+                                         timeout=self.timeout)
+            except requests.RequestException as exc:  # network-level
+                last_err = exc
+                time.sleep(0.6 * (attempt + 1) + random.random() * 0.3)
+                continue
+
+            # A GraphQL validation error is a 200/400 with an `errors` body, so
+            # callers inspect the payload; only transport-level failures retry.
+            if r.status_code in allow_status or r.ok:
+                return self._cache_write(path, url, r)
 
             if r.status_code in (403, 429, 500, 502, 503, 504) and attempt < self.max_retries:
                 time.sleep(1.0 * (attempt + 1) + random.random())

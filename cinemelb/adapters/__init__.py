@@ -25,6 +25,12 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     "nova": ("cinemelb.adapters.nova", "NovaAdapter"),
     "imax": ("cinemelb.adapters.imax", "ImaxAdapter"),
     "sun": ("cinemelb.adapters.sun", "SunAdapter"),
+    #: Indy Systems SPA (Brunswick + Thornbury Picture House)
+    "indy": ("cinemelb.adapters.indy", "IndyAdapter"),
+    #: MovieXchange "Lumos" website + Vista Connect (United Cinemas)
+    "lumos": ("cinemelb.adapters.lumos", "LumosAdapter"),
+    #: Flicks-built white-label site API (Waverley Cinemas)
+    "waverley": ("cinemelb.adapters.waverley", "WaverleyAdapter"),
     "generic_html": ("cinemelb.adapters.generic_html", "GenericHtmlAdapter"),
 }
 
