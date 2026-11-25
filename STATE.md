@@ -23,8 +23,8 @@ for each, and expose a tool that answers:
 | Missing adapters | none |
 | CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,serve}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
-| Tests | 43 pass (1 skipped); `python -m unittest discover -s tests` |
-| Verification | `python scripts/verify.py` — 38/38 checks pass |
+| Tests | 45 pass (1 skipped); `python -m unittest discover -s tests` |
+| Verification | `python scripts/verify.py` — 51/51 checks pass |
 
 ### Adapter coverage (venues / screenings)
 
@@ -60,7 +60,7 @@ IMAX rate-limits hard (Cloudflare 1015 after ~40 rapid requests), so the adapter
 runs through the throttled `Http` client and treats a 429 as a failed day rather
 than an empty one.
 
-## Defects found while doing the IMAX work (all fixed)
+## Defects found while exercising the CLI against the real database (all fixed)
 
 1. **`find_film` truncated a time-sorted list** — a venue whose only session is
    weeks out vanished behind venues with many sessions. IMAX's 70mm run was
@@ -77,6 +77,16 @@ than an empty one.
 4. **A bare "dune" query showed 10 screenings** (the 1984/2021 film) with no hint
    that "Dune: Part Three" was playing at 40+ venues. The CLI now names the
    bigger alternative.
+5. **`nearest` let one megaplex fill every slot** — it truncated a distance-sorted
+   list with `hits[:limit]`, so asking for 8 sessions near Melbourne Central
+   returned 8 sessions at Chinatown Cinema and nothing else within 2 km. It now
+   uses the same breadth-first truncation as `find_film`; the per-venue cap
+   scales with the limit (`limit=200` returns 200, not the 64 a fixed cap of 8
+   allowed).
+6. **Display mixed title casing** — Hoyts publishes `THE HUNGER GAMES: SUNRISE
+   ON THE REAPING` while the catalogue holds the cased form, so result tables
+   and the web page shouted for some rows and not others. `Hit.film` now returns
+   the catalogue spelling; the raw row title is unchanged in the database.
 
 ## Auditor findings — all fixed in `movingstory.py`
 
@@ -100,14 +110,20 @@ All four platforms audited (hoyts, village, palace, movingstory) are rated
 
 ## Git
 
-`master` at `981adaa`. Working tree clean. The three agent branches
+`master` at `748d770`. Working tree clean. The three agent branches
 (`feat/quality`, `feat/reading-adapter`, `feat/indie-hard`) are all at the
 baseline commit and hold no work — master is strictly ahead of them.
 
 ## Remaining work
 
-1. Optional: browser-side "watch" / notification feature (not requested).
-2. Optional: verify the web UI in a browser after the IMAX changes.
+The objective is met: every active venue is scraped, every query shape the user
+asked for works against live data, and the results have been reconciled against
+the venues' own pages. Nothing is known-broken.
+
+Optional, not requested:
+1. A "watch" / notification feature (e-mail or desktop when a session appears).
+2. Retire the `_recon/` scripts into a proper `scripts/audit.py` if the audit is
+   to be re-run routinely.
 
 ## House rules learned the hard way
 
