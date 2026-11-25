@@ -1,0 +1,22 @@
+# scraped state and caches — regenerate with `python -m cinemelb refresh`
+data/cache/
+data/cinemelb.sqlite3
+data/cinemelb.sqlite3-wal
+data/cinemelb.sqlite3-shm
+data/cache/geocode.json
+
+# scratch: downloaded pages and one-off inspection scripts
+_recon/
+
+# generated map exports
+*.html
+!data/**/*.html
+
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+data/cinemas.db

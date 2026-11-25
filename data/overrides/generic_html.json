@@ -1,0 +1,14 @@
+{
+  "metro-boronia": {
+    "strategy": "wpcinema",
+    "generic_html": "https://metroboronia.com.au"
+  },
+  "eclipse-cinema": {
+    "strategy": "veezi",
+    "veezi": "vp8p94rb2b46tshes7ac8j70sr"
+  },
+  "chinatown-cinema-melbourne": {
+    "strategy": "veezi",
+    "veezi": "tsmw1qhgb4mtqx2n092c6dvc5g"
+  }
+}
