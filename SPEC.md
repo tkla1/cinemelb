@@ -291,22 +291,22 @@ published strings stay in SQLite `aka` and never appear as bundle titles.
 
 AC-012 [must] A missing score renders no chip; Metascore 0 is dropped at export; no card
 or page shows a dash or a zero for a score.
-  check: dom: uv run --with playwright python tests/ui/states.py::no-scores
-  status: planned(phase-2)
+  check: dom: uv run --with playwright python tests/ui/states.py  (no-scores case)
+  status: passing (no chip, no source name; 0 zero-scored film rows)
 
 AC-013 [must] A missing or broken cover renders the initials tile without layout shift.
-  check: visual: uv run --with playwright python tests/ui/visual.py --only poster-fallback
-  status: planned(phase-2)
+  check: dom: uv run --with playwright python tests/ui/states.py  (poster-fallback case)
+  status: passing (initials tile, absolute fallback, cover/fallback boxes equal)
 
 AC-014 [must] A session with no ticket URL renders as a non-link pill with its time; a
 sold-out session is dashed, struck through, labelled "Sold out", and unlinked.
-  check: dom: uv run --with playwright python tests/ui/states.py::session-variants
-  status: planned(phase-2)
+  check: dom: uv run --with playwright python tests/ui/states.py  (session-variants case)
+  status: passing (span, no href, dashed, line-through, "Sold out")
 
 AC-015 [must] While a filter hides every session on a day, the results region says how
 many sessions were hidden and offers a Clear control.
-  check: dom: uv run --with playwright python tests/ui/states.py::filtered-empty
-  status: planned(phase-5)
+  check: dom: uv run --with playwright python tests/ui/states.py  (filtered-empty case)
+  status: passing (hidden count named, Clear restores the day)
 
 AC-016 [must] The day rail marks exactly one day with aria-current="date" and shows the
 14-day window from today.
@@ -719,6 +719,7 @@ current `render` paths, so the manifest never lags the code.
 | T1 | `uv run python scripts/check_bundle.py dist/data/bundle.json` (`--titles`, `--against-db`) | arity, indices, counts, prefixes, DB parity | green |
 | T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (240 / 21.3 / 6.7 / 1.8 KB gz) |
 | T2 | `uv run --with playwright python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
+| T2 | `uv run --with playwright python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
 | T2 | `uv run --with playwright python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
 | T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters | green (129 tests, 1 skipped) |
 | T3 | `uv run --with playwright python tests/ui/search.py` | search submit, combobox, empty states | planned (phase 5) |
