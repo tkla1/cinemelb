@@ -207,6 +207,41 @@ def main() -> int:
             check(persisted["savedSort"] == "title" and '"cinema"' in persisted["view"],
                   "preferences are stored under cinemelb-view/cinemelb-sort")
             page.close()
+
+            # AC-023: changing a filter rewrites a polite live region.
+            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page.goto(base + "#/day/" + bundle["dates"][-1], wait_until="networkidle")
+            page.wait_for_selector(".film, .tile")
+            before = page.inner_text(".day-head .count")
+            polite = page.get_attribute(".day-head .count", "aria-live")
+            page.select_option("#after", "1260")
+            page.wait_for_function(
+                "(before) => document.querySelector('.day-head .count')"
+                ".textContent !== before", arg=before)
+            after = page.inner_text(".day-head .count")
+            check(polite == "polite" and after != before,
+                  f"filter change rewrites the polite count ({before!r} -> {after!r})")
+            page.close()
+
+            # AC-027: reduced motion is honoured and the spinner is slowed.
+            page = browser.new_page(viewport={"width": 1280, "height": 800},
+                                    reduced_motion="reduce")
+            page.goto(base, wait_until="networkidle")
+            page.wait_for_selector(".film, .tile")
+            motion = page.evaluate(
+                "() => { const probe = document.createElement('div');"
+                " probe.className = 'spinner'; document.body.appendChild(probe);"
+                " const s = getComputedStyle(probe);"
+                " const others = [...document.querySelectorAll('*')].filter(el =>"
+                "  getComputedStyle(el).animationIterationCount === 'infinite');"
+                " return {media: matchMedia('(prefers-reduced-motion: reduce)').matches,"
+                "  duration: s.animationDuration, probes: others.length}; }")
+            check(motion["media"], "the browser reports reduced motion")
+            check(motion["duration"] == "2.4s",
+                  f"spinner slows under reduced motion ({motion['duration']})")
+            check(motion["probes"] <= 1,
+                  f"no other infinite animation runs ({motion['probes']} found)")
+            page.close()
             browser.close()
     finally:
         server.shutdown()

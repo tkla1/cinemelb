@@ -345,8 +345,8 @@ so a screen reader starts at the new content.
 
 AC-023 [must] When filters change the result set, the new film/session count is announced
 politely.
-  check: aria: uv run --with playwright python tests/ui/routes.py::announce-count
-  status: implemented (aria-live="polite" on day/search/film counts); check planned
+  check: dom: uv run --with playwright python tests/ui/layout.py  (announce-count case)
+  status: passing (aria-live="polite"; a filter rewrites "1 film · 1 session" to "0 films · 0 sessions")
 
 AC-024 [must] At 320px wide, document.scrollWidth <= clientWidth on every route.
   check: dom: uv run --with playwright python tests/ui/layout.py  (320px route sweep)
@@ -366,8 +366,8 @@ comes from --focus-ring, not a literal.
 
 AC-027 [must] prefers-reduced-motion removes non-essential animation and shortens the
 spinner.
-  check: tokens: uv run python scripts/check_tokens.py --motion
-  status: planned(phase-4) — spinner already slows to 2.4s
+  check: dom: uv run --with playwright python tests/ui/layout.py  (reduced-motion case)
+  status: passing (spinner 2.4s; no other infinite animation; media query active)
 
 AC-028 [must] Budgets hold: bundle <= 260 KB gz, JS <= 26 KB gz, CSS <= 12 KB gz,
 HTML <= 6 KB gz.
@@ -575,7 +575,7 @@ animation timing); add a case before falling back to images.
 | 1 (complete 2026-11-26) | Substrate: `tokens.json`, `build_tokens.py`, `check_tokens.py`, `check_contrast.py`, `check_manifest.py`, `check_bundle.py`, `check_budget.py`, `components.json`, `gallery.html`, `window.CINEMELB`, `tests/ui/layout.py`, route focus + live counts, 44px mobile controls, rebuild `dist` | AC-001,002,003,006,007,009,010,016,018,019,020,022,024,028,029 green; gallery renders 13 live sections; 49 layout/DOM checks | Revert the commit. Generated block stripped leaves `app.css` byte-identical; no consumer changed |
 | 2 (complete 2026-11-26) | `film-card` + `poster-tile` states (long title, no score, no cover, sold out, +N), score tokens, contrast fix for `--text-3` | AC-004,012,013,014,015 green via `tests/ui/states.py`; contrast >= 4.5:1 both themes | Revert `filmCard`/`posterTile` + manifest entries + token delta; no route change |
 | 3 (complete 2026-11-26) | `view-bar`, `filter-bar`, `near-bar` controls (24/44px targets, `--focus-ring`, label association, pressed states) | AC-017,018,025,026 green via `tests/ui/layout.py`; 119 controls measured | Revert the three render functions and their CSS block; persisted localStorage keys unchanged |
-| 4 | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 | Remove the focus/live-region calls; render output byte-identical otherwise |
+| 4 (complete 2026-11-26) | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 green via `tests/ui/layout.py` | Remove the focus/live-region calls; render output byte-identical otherwise |
 | 5 | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
 | 6 | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 | Revert `renderFilm`/`venueBlocks`; data path untouched |
 | 7 | Search refinement: match `aka`/programme prefix and loose title (needs a new D-entry; likely bundle v3 or a `aliases` table) | New AC: query "BFF26" and "Parky" both return the film; `bundle` arity check updated | Keep v2 bundle and old `searchMatches`; ship behind `#/search/<q>?aliases=0` until the AC is green |
