@@ -42,6 +42,11 @@ WEB_DIR = Path(__file__).resolve().parent / "web"
 #: Default synopsis length. 0 keeps the full text.
 SYNOPSIS_CAP = 200
 
+#: Brands the UI's "Cinema chains" filter counts as a chain. Palace is a
+#: national arthouse chain and IMAX is a single-brand large-format venue; the
+#: rest (including the suburban Metro and United brands) read as independent.
+CHAIN_BRANDS = frozenset({"Hoyts", "Village", "Reading", "Palace", "IMAX"})
+
 #: Compound attributes arrive comma-separated ("Limited, NFT").
 _ATTR_SPLIT = re.compile(r"\s*[,;]\s*")
 
@@ -115,6 +120,25 @@ def _canonical_attrs(raw: Any) -> list[str]:
                     out.append(single)
     out.sort(key=lambda b: (_ATTR_ORDER.index(b) if b in _ATTR_ORDER else len(_ATTR_ORDER), b))
     return out
+
+
+def _cinema_tags(cinema: dict[str, Any]) -> list[str]:
+    """Venue tags plus the derived chain/independent split the filter needs.
+
+    ``chain`` is empty for most independents and non-empty for both the big
+    brands and suburban mini-chains, so the UI cannot tell them apart from
+    that field alone.  The split is derived here rather than in the browser:
+    one list of brands, one place to change it, and the bundle stays data.
+    """
+    tags: list[str] = []
+    for item in cinema.get("tags") or []:
+        text = " ".join(str(item).split())
+        if text and text != "independent" and text not in tags:
+            tags.append(text)
+    chain = str(cinema.get("chain") or "").strip()
+    if chain not in CHAIN_BRANDS:
+        tags.append("independent")
+    return tags
 
 
 def _truncate(text: str, cap: int) -> str:
@@ -224,7 +248,7 @@ def build_bundle(
             c.get("suburb") or "",
             c.get("address") or "",
             safe_href(c.get("website")),
-            c.get("tags") or [],
+            _cinema_tags(c),
             round(float(c["latitude"]), 5) if c.get("latitude") is not None else None,
             round(float(c["longitude"]), 5) if c.get("longitude") is not None else None,
             c.get("phone") or "",
@@ -263,8 +287,8 @@ def build_bundle(
             imdb,
             rt,
             mc,
-            entry.get("rt_url") or "",
-            entry.get("mc_url") or "",
+            safe_href(entry.get("rt_url")) or "",
+            safe_href(entry.get("mc_url")) or "",
         ])
 
     film_index = {f["key"]: i for i, f in enumerate(films)}
@@ -354,6 +378,18 @@ def _validate(bundle: dict[str, Any]) -> None:
     for i, row in enumerate(bundle["cinemas"]):
         if len(row) != 10:
             raise SystemExit(f"cinema row {i} has {len(row)} fields, expected 10")
+        tags = row[5]
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            raise SystemExit(f"cinema row {i} tags are not a string list")
+        if tags.count("independent") > 1:
+            raise SystemExit(f"cinema row {i} repeats the independent tag")
+        # The type filter depends on this tag, and a missing one reads as a
+        # chain.  Validate the derivation rather than trusting the caller.
+        should_be_independent = row[1] not in CHAIN_BRANDS
+        if bool(tags.count("independent")) != should_be_independent:
+            raise SystemExit(
+                f"cinema row {i} ({row[0]!r}) has the wrong chain/independent tag"
+            )
 
     for i, row in enumerate(bundle["films"]):
         if len(row) != 15:

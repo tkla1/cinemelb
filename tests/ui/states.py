@@ -6,6 +6,7 @@ Run: uv run python tests/ui/states.py
 from __future__ import annotations
 
 import sys
+from datetime import date
 from urllib.parse import quote
 
 from playwright.sync_api import sync_playwright
@@ -45,6 +46,13 @@ def main() -> int:
         by_film_day.setdefault((row[1], row[0]), set()).add(row[2])
     busy = max(by_film_day.items(), key=lambda item: len(item[1]))
     busy_film, busy_date = films[busy[0][0]], dates[busy[0][1]]
+    indie_names = {c[0] for c in bundle["cinemas"] if "independent" in c[5]}
+    today_iso = date.today().isoformat()
+    indie_date = next(
+        dates[s[0]] for s in screenings
+        if 0 <= s[0] < len(dates) and dates[s[0]] > today_iso
+        and bundle["cinemas"][s[3]][0] in indie_names
+    )
     check(len(busy[1]) > 5,
           f"fixture: {busy_film[1]!r} has {len(busy[1])} distinct times on {busy_date}")
 
@@ -178,6 +186,26 @@ def main() -> int:
                   f"card shows five time pills ({card and card['times']})")
             check(card and card["more"].startswith("+") and card["more"][1:].isdigit(),
                   f"overflow pill counts the rest ({card and card['more']!r})")
+
+            # Cinema-type filter: the independent half is tagged in the bundle,
+            # and the chain list narrows with it.
+            goto(page, base, f"#/day/{indie_date}", ".films .film")
+            page.select_option("#cinema-type", "indie")
+            page.wait_for_selector(".films .film")
+            page.evaluate("() => { document.querySelector('.films .film').open = true; }")
+            kind = page.evaluate(
+                "() => { const st = window.CINEMELB.state;"
+                " const indie = new Set(st.cinemas"
+                "   .filter(c => c[5].indexOf('independent') >= 0).map(c => c[0]));"
+                " return {shown: [...document.querySelectorAll("
+                "   '.films .film .venue-name')].map(e => e.textContent.trim()),"
+                "  indie: [...indie],"
+                "  chains: [...document.querySelectorAll('#chain option')]"
+                "   .map(o => o.value).filter(Boolean)}; }")
+            check(kind["shown"] and all(v in kind["indie"] for v in kind["shown"]),
+                  f"independent filter shows only indie venues ({kind['shown']})")
+            check("Hoyts" not in kind["chains"],
+                  f"chain list narrows with the cinema type ({kind['chains']})")
 
             # AC-015: filters that hide a whole day name the hidden count and clear.
             goto(page, base, f"#/day/{dates[empty_date_idx]}", ".films .film")

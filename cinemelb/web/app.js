@@ -85,7 +85,7 @@
     byFilm: null,
     today: 0,          // index into bundle.dates
     nowMinute: 0,
-    filters: { accessible: false, chain: '', later: false, after: 0, within: 0 },
+    filters: { accessible: false, kind: '', chain: '', later: false, after: 0, within: 0 },
     group: 'film',       // day view: 'film' | 'cinema' | 'time'
     filmGroup: 'day',    // film view: 'day' | 'cinema' | 'time'
     sort: 'soonest',    // day view: 'soonest' | 'rating' | 'title' | 'near'
@@ -95,8 +95,7 @@
     routeKey: '',      // last route, for moving focus only on navigation
     renderedOnce: false,
     place: null,       // { name, lat, lon, source } once a location is set
-    route: { name: 'day', date: null, film: null, q: null },
-    chains: []
+    route: { name: 'day', date: null, film: null, q: null }
   };
 
   var D = {};
@@ -542,8 +541,27 @@
     return d >= 0 && d < lead;
   }
 
+  /* Cinema rows carry a derived "independent" tag (export._cinema_tags), so
+     the chain/indie split is data, not a brand list duplicated in the app. */
+  function cinemaKind(cinemaIdx) {
+    var tags = S.cinemas[cinemaIdx] && S.cinemas[cinemaIdx][5];
+    return tags && tags.indexOf('independent') >= 0 ? 'indie' : 'chain';
+  }
+
+  function chainsFor(kind) {
+    var out = [], seen = Object.create(null);
+    for (var c = 0; c < S.cinemas.length; c++) {
+      if (kind && cinemaKind(c) !== kind) continue;
+      var chain = S.cinemas[c][1];
+      if (chain && !seen[chain]) { seen[chain] = 1; out.push(chain); }
+    }
+    out.sort();
+    return out;
+  }
+
   function rowPasses(row) {
     if (S.filters.accessible && !hasAttrs(row, ['CC', 'AD', 'Open Captions'])) return false;
+    if (S.filters.kind && cinemaKind(S.rowCinema[row]) !== S.filters.kind) return false;
     // Cinema rows are arrays: [name, chain, suburb, ...]. Reaching for .chain
     // here silently compared against undefined and hid every row.
     if (S.filters.chain && S.cinemas[S.rowCinema[row]][1] !== S.filters.chain) return false;
@@ -649,15 +667,6 @@
     S.byDate = byDate;
     S.byFilm = byFilm;
 
-    // Only offer chains that appear in the exported window.
-    var seen = Object.create(null);
-    S.chains = [];
-    for (var c = 0; c < S.cinemas.length; c++) {
-      var chain = S.cinemas[c][1];
-      if (chain && !seen[chain]) { seen[chain] = 1; S.chains.push(chain); }
-    }
-    S.chains.sort();
-
     var now = melbourneNow();
     S.nowMinute = now.minute;
     var todayIdx = bundle.dates.indexOf(now.date);
@@ -699,10 +708,11 @@
       fr.hidden = !n.rated;
       fr.innerHTML = n.rated
         ? 'Film ratings from <a href="https://www.imdb.com/" target="_blank" ' +
-          'rel="noopener noreferrer">IMDb</a> (non-commercial datasets) and ' +
+          'rel="noopener noreferrer">IMDb</a> (non-commercial datasets), ' +
+          '<a href="https://www.rottentomatoes.com/" target="_blank" ' +
+          'rel="noopener noreferrer">Rotten Tomatoes</a> and ' +
           '<a href="https://www.metacritic.com/" target="_blank" ' +
-          'rel="noopener noreferrer">Metacritic</a>; Rotten Tomatoes and ' +
-          'Metacritic via OMDb where configured.'
+          'rel="noopener noreferrer">Metacritic</a>.'
         : '';
     }
     var fp = document.getElementById('foot-posters');
@@ -807,11 +817,22 @@
       '" data-filter="later" aria-pressed="' + S.filters.later + '">' +
       'Leaves time to get there</button>';
 
-    if (S.chains.length > 1) {
+    html += '<select id="cinema-type" class="select" aria-label="Filter by cinema type">' +
+      '<option value=""' + (S.filters.kind ? '' : ' selected') + '>All cinemas</option>' +
+      '<option value="chain"' + (S.filters.kind === 'chain' ? ' selected' : '') +
+      '>Cinema chains</option>' +
+      '<option value="indie"' + (S.filters.kind === 'indie' ? ' selected' : '') +
+      '>Independent cinemas</option>' +
+      '</select>';
+
+    // The chain list narrows with the type, so "Hoyts" cannot be selected
+    // while the independent half is showing and leave a permanently empty list.
+    var chains = chainsFor(S.filters.kind);
+    if (chains.length > 1) {
       html += '<select id="chain" class="select" aria-label="Filter by cinema chain">' +
-        '<option value="">All cinemas</option>';
-      for (var i = 0; i < S.chains.length; i++) {
-        var c = S.chains[i];
+        '<option value="">All chains</option>';
+      for (var i = 0; i < chains.length; i++) {
+        var c = chains[i];
         html += '<option value="' + esc(c) + '"' +
           (c === S.filters.chain ? ' selected' : '') + '>' + esc(c) + '</option>';
       }
@@ -844,8 +865,8 @@
   }
 
   function filtersActive() {
-    return !!(S.filters.accessible || S.filters.chain || S.filters.later ||
-      S.filters.after || S.filters.within);
+    return !!(S.filters.accessible || S.filters.kind || S.filters.chain ||
+      S.filters.later || S.filters.after || S.filters.within);
   }
 
   /* The "group by" control. It is rendered into the results, not the filter
@@ -1967,7 +1988,12 @@
 
   function onSelect(event) {
     var id = event.target.id;
-    if (id === 'chain') S.filters.chain = event.target.value;
+    if (id === 'cinema-type') {
+      S.filters.kind = event.target.value;
+      if (S.filters.chain && chainsFor(S.filters.kind).indexOf(S.filters.chain) < 0) {
+        S.filters.chain = '';
+      }
+    } else if (id === 'chain') S.filters.chain = event.target.value;
     else if (id === 'after') S.filters.after = parseInt(event.target.value, 10) || 0;
     else if (id === 'within') S.filters.within = parseInt(event.target.value, 10) || 0;
     else return;
@@ -2127,7 +2153,7 @@
 
     document.addEventListener('click', function (event) {
       if (event.target.closest('[data-clear]')) {
-        S.filters = { accessible: false, chain: '', later: false, after: 0, within: 0 };
+        S.filters = { accessible: false, kind: '', chain: '', later: false, after: 0, within: 0 };
         render();
       }
     });

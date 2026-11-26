@@ -64,6 +64,49 @@ class TestBundleAliases(unittest.TestCase):
         with self.assertRaises(SystemExit):
             _validate(broken)
 
+    def test_chain_and_independent_tags_are_derived(self):
+        self.store.upsert_cinemas([
+            Cinema(id="palace", name="Palace Como", chain="Palace"),
+            Cinema(id="metro", name="Metro Boronia", chain="Metro",
+                   tags=["independent"]),
+            Cinema(id="nova", name="Cinema Nova", chain=""),
+            Cinema(id="imax", name="IMAX Melbourne", chain="IMAX"),
+        ])
+        bundle = build_bundle(self.store)
+        tags = {row[0]: row[5] for row in bundle["cinemas"]}
+        self.assertNotIn("independent", tags["Palace Como"])
+        self.assertNotIn("independent", tags["IMAX Melbourne"])
+        self.assertIn("independent", tags["Metro Boronia"])
+        self.assertIn("independent", tags["Cinema Nova"])
+        # A hand-written tag and the derived one must not duplicate.
+        self.assertEqual(tags["Metro Boronia"].count("independent"), 1)
+
+    def test_rating_links_are_sanitised(self):
+        bundle = build_bundle(
+            self.store,
+            ratings={
+                "parky": {
+                    "rt": 90,
+                    "rt_url": "javascript:alert(1)",
+                    "mc": 70,
+                    "mc_url": "data:text/html,<script>alert(1)</script>",
+                }
+            },
+        )
+        film = next(row for row in bundle["films"] if row[0] == "parky")
+        self.assertEqual(film[13], "")
+        self.assertEqual(film[14], "")
+
+    def test_missing_independent_tag_fails_validation(self):
+        bundle = build_bundle(self.store)
+        broken = dict(bundle)
+        broken["cinemas"] = [list(row) for row in bundle["cinemas"]]
+        broken["cinemas"][0][5] = [
+            t for t in broken["cinemas"][0][5] if t != "independent"
+        ]
+        with self.assertRaises(SystemExit):
+            _validate(broken)
+
 
 if __name__ == "__main__":
     unittest.main()

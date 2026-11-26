@@ -180,7 +180,7 @@ Deploying it is one command, after a refresh so the times are current:
 
 ```bash
 python -m cinemelb refresh
-python -m cinemelb ratings
+python -m cinemelb ratings --scrape-rt-mc   # RT is opt-in; see the ratings section
 python -m cinemelb posters
 uv run python scripts/build_tokens.py --check
 python -m cinemelb export --out dist
@@ -202,9 +202,9 @@ or roughly 235 KB gzipped over the wire. Attribute spellings are canonicalised
 and rows are sorted by date then minute so a day is a contiguous slice.
 
 The UI reads that one file once and then works in memory: a day by day rail,
-accessible-screening and chain filters, per-film pages with every remaining
-session, and title search with suggestions. Routing is hash-based, so a deep
-link never asks the host for a path.
+accessible-screening, cinema-type and chain filters, per-film pages with every
+remaining session, and title search with suggestions. Routing is hash-based, so
+a deep link never asks the host for a path.
 
 **Grouping.** A day holds ~1,900 sessions, so the listing can be pivoted three
 ways without ever rendering 1,900 rows:
@@ -243,8 +243,13 @@ morning. And a session after midnight belongs to the **previous** listing day �
 the 00:31 on the 27th is the 26th's Late night, still shown as `12:31am` — so a
 Friday evening out does not lose its midnight session to Saturday's page.
 
-**Filters.** Beyond accessible screenings and chain, two session-level filters
-cut the list down:
+**Filters.** Beyond accessible screenings, the bar separates the big chains
+from the independents: **Cinema chains** covers Hoyts, Village, Reading, Palace
+and IMAX, and **Independent cinemas** covers every other venue (including the
+suburban Metro and United brands). The chain dropdown narrows to the brands in
+the chosen half, so the two controls cannot contradict each other. The split is
+a derived `independent` tag baked into the bundle by the exporter, not a list
+duplicated in the browser. Two session-level filters cut the list down further:
 
 - **After** a time of day — `After 7pm` keeps only sessions that start at or
   after 19:00, on whichever day you are looking at.
@@ -276,11 +281,11 @@ session has no URL, the venue link is the fallback rather than a dead button.
 **Ratings.** IMDb, Rotten Tomatoes and Metacritic chips come from
 `data/ratings.json`, baked in at export time by `python -m cinemelb ratings`;
 the browser never calls a ratings API and holds no key. Scores are printed on
-the collapsed film card (`IMDb 7.5 · MC 55`) as well as in its expanded body
-and on the film page, so the Top rated sort has something visible to order by.
-A missing score is not rendered — never a dash or a zero — and each chip links
-to its source. See `docs/api-reference/` for the matching rules and the terms
-behind each source.
+the collapsed film card (`IMDb 7.5 · RT 83% · MC 55`) as well as in its
+expanded body and on the film page, so the Top rated sort has something visible
+to order by. A missing score is not rendered — never a dash or a zero — and
+each chip links to its source. See `docs/api-reference/` for the matching rules
+and the terms behind each source.
 
 **Covers.** Posters are resolved at build time by `python -m cinemelb posters`
 and cached in `data/posters.json`. Venue feeds were the original source, but
@@ -319,7 +324,8 @@ instead of "parsing" an HTML error page as JSON.
 ```bash
 python -m cinemelb ratings                  # fill data/ratings.json
 python -m cinemelb ratings --limit 20       # smoke run (new lookups only)
-OMDB_API_KEY=... python -m cinemelb ratings # also Rotten Tomatoes + Metacritic
+python -m cinemelb ratings --scrape-rt-mc   # add Rotten Tomatoes
+OMDB_API_KEY=... python -m cinemelb ratings # also Metacritic/IMDb via OMDb
 python -m cinemelb ratings --refresh        # ignore the cache
 ```
 
@@ -330,12 +336,16 @@ confidence gate stores ambiguous matches as `needs_review` and never displays
 them; runtime and vote count outrank recency, so a repertory screening of
 *AKIRA* resolves to the 1988 film rather than the remake.
 
-IMDb scores come from `title.ratings.tsv.gz`. RT/MC come from OMDb when a free
-`OMDB_API_KEY` is set (1,000 requests/day); without one, Metacritic has a
-keyless fallback and Rotten Tomatoes needs `--scrape-rt-mc`, which is against
-both sites' terms — see `docs/api-reference/rt-metacritic.md`. Everything lands
-in `data/ratings.json` (gitignored); `export` bakes it in, and `--no-ratings`
-leaves the fields null.
+IMDb scores come from `title.ratings.tsv.gz`. OMDb's free key (1,000
+requests/day) returns IMDb and Metacritic scores, but it stopped returning
+Rotten Tomatoes data — its `Ratings` array no longer carries a Tomatometer.
+Tomatometers therefore come from `--scrape-rt-mc`: one batched Wikidata query
+maps the catalogue's IMDb IDs (`P345`) to RT pages (`P1258`), then the film
+page's scorecard is parsed and gated on the IMDb year, so a remake cannot lend
+its score to the original. No request touches RT's robots-disallowed `/search`.
+That path is against RT/MC's terms and stays opt-in — see
+`docs/api-reference/rt-metacritic.md`. Everything lands in `data/ratings.json`
+(gitignored); `export` bakes it in, and `--no-ratings` leaves the fields null.
 
 ### `posters` — resolve a real cover for every film
 

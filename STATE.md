@@ -24,18 +24,20 @@ for each, and expose a tool that answers:
 | CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,normalise,map,ratings,posters,serve,export}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
 | Static site | **https://cinemelb.pages.dev** — `python -m cinemelb export` → Cloudflare Pages |
-| Tests | 45 pass (1 skipped); `python -m unittest discover -s tests` |
-| Verification | `python scripts/verify.py` — 51/51 checks pass |
+| Tests | 165 pass (1 skipped); `uv run python -m unittest discover -s tests` |
+| Verification | `uv run python scripts/security_gate.py` + the SPEC §9 ladder |
 
 ### Static site
 
 `cinemelb export --out dist` writes a self-contained SPA: `index.html`, two
 content-hashed assets, `_headers`, `robots.txt`, and `data/bundle.json`
-(19,057 sessions · 393 films · 58 cinemas · through 31 Jul 2027; 1.9 MB raw,
-~235 KB gzipped). Deployed to the Cloudflare Pages project `cinemelb`:
+(19,057 sessions · 390 films · 58 cinemas · through 31 Jul 2027; 1.9 MB raw,
+~238 KB gzipped). Deployed to the Cloudflare Pages project `cinemelb`:
 
 ```bash
 python -m cinemelb refresh
+python -m cinemelb ratings --scrape-rt-mc
+python -m cinemelb posters
 python -m cinemelb export --out dist
 npx wrangler pages deploy dist --project-name cinemelb --branch main
 ```
@@ -44,6 +46,26 @@ npx wrangler pages deploy dist --project-name cinemelb --branch main
 `cinemelb/web/` is the source shell and is committed (`.gitignore` had a blanket
 `*.html` rule that silently excluded the shell's `index.html`; there is now an
 exception for `cinemelb/web/*.html`).
+
+### Cinema type and Rotten Tomatoes (2026-11-26, phase 9)
+
+- The filter bar now has **All cinemas / Cinema chains / Independent cinemas**.
+  The exporter derives an `independent` tag on each bundle cinema row from
+  `CHAIN_BRANDS = {Hoyts, Village, Reading, Palace, IMAX}` (`export._cinema_tags`);
+  `_validate` rejects a missing/duplicated tag, so the filter cannot silently
+  turn a multiplex into an indie. The chain dropdown only lists brands in the
+  chosen half.
+- OMDb no longer returns a Tomatometer (`Ratings` carries IMDb + Metacritic
+  only; `tomatoes=true` is `N/A`). `ratings --scrape-rt-mc` now joins IMDb IDs
+  to Wikidata's RT IDs (`P345` -> `P1258`) in five batched SPARQL requests
+  (`_wikidata_rt_ids`, 177/239 mapped), then reads the film page's scorecard
+  with the existing year gate. RT's site search is robots-disallowed and is not
+  used; generated slug guesses remain a fallback. Still an explicit opt-in
+  because RT/MC terms forbid automated collection.
+- 2026-11-26 build: **184 of 390 films carry a Tomatometer** (217 IMDb, 154
+  Metacritic) after the P1258 join plus slug-guess fallback. The OMDb key is
+  optional for MC coverage; the key is a secret, keep it in `.env`
+  (`OMDB_API_KEY`), never in the bundle.
 
 Bugs found and fixed while finishing the SPA (all verified in a browser against
 the built bundle and again against the live deploy):
@@ -99,14 +121,14 @@ carries an arrow into its own page, every venue line shows its address plus a
 Google Maps "Directions" link (and site/booking/phone when known), and ratings
 render only when present. Scores are build-time data: `python -m cinemelb ratings`
 fills `data/ratings.json` (local IMDb bulk join, Wikidata fallback, OMDb for
-RT/MC when keyed, opt-in direct RT/MC parsing), and `export` bakes whatever is
-cached into the bundle. See `docs/api-reference/` for sources and terms.
+IMDb/MC when keyed, opt-in direct RT/MC parsing), and `export` bakes whatever
+is cached into the bundle. See `docs/api-reference/` for sources and terms.
 
 First full ratings pass (26 Nov, no OMDb key): 248 of 393 films resolved to an
 IMDb id, **218 IMDb scores**, **158 Metascores** via the keyless Metacritic
-finder, 0 Rotten Tomatoes, 0 failures. RT needs either `OMDB_API_KEY` or
-`--scrape-rt-mc`; `AKIRA` resolved to `tt0094625` (1988), which is the case the
-confidence gate exists for. The datasets live in `data/cache/` (755 MB, cached
+finder, 0 Rotten Tomatoes, 0 failures. RT needs `--scrape-rt-mc` (OMDb no
+longer returns it); `AKIRA` resolved to `tt0094625` (1988), which is the case
+the confidence gate exists for. The datasets live in `data/cache/` (755 MB, cached
 and pickled); `data/ratings.json` is gitignored and rebuilt by the command.
 
 **Covers and sorting (26 Nov follow-up).** Palace's `/poster/<name>` endpoint

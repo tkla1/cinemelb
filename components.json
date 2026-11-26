@@ -125,7 +125,7 @@
       "render": "window.CINEMELB.render.filters",
       "gallery": "cinemelb/web/gallery.html#filter-bar",
       "props": [],
-      "states": ["default", "active", "place-set", "hidden-search"],
+      "states": ["default", "active", "cinema-type", "place-set", "hidden-search"],
       "tokens": ["--panel", "--line", "--text-2", "--accent", "--accent-dim", "--radius"],
       "a11y": {"chip": "aria-pressed", "select": "native", "clear": "button"},
       "examples": ["gallery/filter-bar--active"],

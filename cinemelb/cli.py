@@ -1043,9 +1043,9 @@ def ratings(
     """Attach IMDb, Rotten Tomatoes and Metacritic scores to the catalogue.
 
     Build-time and cached: the browser never calls a ratings service. IMDb comes
-    from the official bulk dataset, RT/MC from OMDb when ``OMDB_API_KEY`` is set,
-    and Metacritic also has a keyless fallback. Direct page parsing needs
-    ``--scrape-rt-mc`` and is against both sites' terms.
+    from the official bulk dataset, Metacritic from OMDb when ``OMDB_API_KEY`` is
+    set or its keyless finder otherwise. OMDb no longer returns a Tomatometer, so
+    Rotten Tomatoes needs ``--scrape-rt-mc``, which is against both sites' terms.
     """
     import os
 
@@ -1059,7 +1059,10 @@ def ratings(
 
     omdb_key = os.environ.get("OMDB_API_KEY") or None
     if omdb_key:
-        console.print("[dim]OMDb key found: IMDb, Rotten Tomatoes and Metacritic.[/dim]")
+        console.print(
+            "[dim]OMDb key found: IMDb and Metacritic; Rotten Tomatoes needs "
+            "--scrape-rt-mc.[/dim]"
+        )
     else:
         console.print(
             "[dim]No OMDB_API_KEY: IMDb from the bulk dataset, Metacritic via its "

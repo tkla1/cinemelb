@@ -23,10 +23,11 @@ matcher: ``wbsearchentities`` confidently returns the wrong film for short or
 generic titles.
 
 Scores come from the official IMDb bulk file when available, OMDb when the
-caller supplies a key, the Metacritic finder as a keyless fallback, and direct
-Rotten Tomatoes/Metacritic page parsing only when the caller explicitly opts in
-with ``scrape=True``.  The RT/MC contracts forbid automated collection, so that
-path is deliberately off by default and the docstrings say so.
+caller supplies a key (IMDb/Metacritic only — it no longer returns a
+Tomatometer), and the Metacritic finder as a keyless fallback.  Rotten Tomatoes
+comes from RT's film pages only when the caller explicitly opts in with
+``scrape=True``: the RT/MC contracts forbid automated collection, so that path
+is deliberately off by default and the docstrings say so.
 
 Everything here is sequential and paced.  A build that gets challenged should
 lose one source for the rest of the run and keep the cached values, not retry a
@@ -67,6 +68,15 @@ DEFAULT_AKAS_URL = "https://datasets.imdbws.com/title.akas.tsv.gz"
 WIKIDATA_API = "https://www.wikidata.org/w/api.php"
 OMDB_URL = "https://www.omdbapi.com/"
 RT_MOVIE_URL = "https://www.rottentomatoes.com/m/{slug}"
+WIKIDATA_SPARQL = "https://query.wikidata.org/sparql"
+
+#: Wikidata asks for a descriptive UA with a way to contact the operator.
+#: The browser UA used for the venue pages is not appropriate for the query
+#: service, which may rate-limit generic clients.
+_WIKIDATA_UA = (
+    "cinemelb/1.0 (personal non-commercial Melbourne cinema showtimes; "
+    "https://cinemelb.pages.dev)"
+)
 MC_BACKEND = "https://backend.metacritic.com/reviews/metacritic"
 MC_FINDER = "https://backend.metacritic.com/finder/metacritic/search/{title}/desktop"
 MC_PAGE = "https://www.metacritic.com/movie/{slug}/"
@@ -1770,6 +1780,67 @@ def _parse_rt_html(html: str) -> dict[str, int | None]:
     return out
 
 
+def _wikidata_rt_ids(
+    imdb_ids: Iterable[str],
+    session: requests.Session,
+    *,
+    timeout: float = 60.0,
+    batch: int = 50,
+) -> dict[str, str]:
+    """Map IMDb tconst -> RT slug from Wikidata's P1258 (RT ID) property.
+
+    RT slugs are not derivable from a title: ``/m/the_fly`` is a 2025 short,
+    while the 1986 film lives at ``/m/1133213-fly``.  A title search would
+    find the right page but RT disallows ``/search`` in robots.txt, and slug
+    guessing attaches the wrong film when the year is unknown.  Wikidata's
+    ``P345`` (IMDb ID) -> ``P1258`` join is exact, so five batched SPARQL
+    requests resolve the whole catalogue without touching a disallowed path.
+
+    Failures are silent: a missing RT slug costs one chip, not the run.
+    """
+    ids = sorted({
+        text for value in imdb_ids
+        if (text := str(value or "").strip()) and re.fullmatch(r"tt\d+", text)
+    })
+    out: dict[str, str] = {}
+    for start in range(0, len(ids), batch):
+        chunk = ids[start:start + batch]
+        values = " ".join(f'"{tconst}"' for tconst in chunk)
+        query = (
+            "SELECT ?imdb ?rt WHERE { VALUES ?imdb { " + values + " } "
+            "?film wdt:P345 ?imdb . OPTIONAL { ?film wdt:P1258 ?rt . } }"
+        )
+        try:
+            reply = session.post(
+                WIKIDATA_SPARQL,
+                data={"format": "json", "query": query},
+                headers={
+                    "User-Agent": _WIKIDATA_UA,
+                    "Accept": "application/sparql-results+json",
+                },
+                timeout=timeout,
+            )
+        except requests.RequestException:
+            continue
+        if reply.status_code != 200:
+            continue
+        try:
+            payload = reply.json()
+        except ValueError:
+            continue
+        bindings = (payload.get("results") or {}).get("bindings") or []
+        for binding in bindings:
+            if not isinstance(binding, dict):
+                continue
+            imdb = str((binding.get("imdb") or {}).get("value") or "")
+            slug = _clean_rt_slug((binding.get("rt") or {}).get("value") or "")
+            if imdb and slug:
+                out[imdb] = slug
+        if start + batch < len(ids):
+            time.sleep(1.0)
+    return out
+
+
 def _rt_scores(
     slug: str,
     fetcher: _Fetcher,
@@ -2218,6 +2289,7 @@ def enrich(
     """
     cache_path = Path(cache_path)
     cache = load_cache(cache_path)
+    films = [film for film in (films or [])]
     sess = session or _new_session()
     fetcher = _Fetcher(sess, pace=pace)
 
@@ -2240,6 +2312,20 @@ def enrich(
     index_state: dict[str, Any] = {"loaded": False, "index": None, "error": None}
     ratings_state: dict[str, Any] = {"loaded": False, "map": {}, "error": None}
     omdb_disabled = False
+
+    # RT slugs are an exact IMDb-ID -> RT-ID join (D-018).  Only needed for the
+    # opt-in scrape path, and a failure simply leaves those chips empty.
+    rt_ids: dict[str, str] = {}
+    if scrape:
+        candidate_ids = [
+            str(entry.get("imdb_id") or "")
+            for entry in cache.values() if isinstance(entry, dict)
+        ]
+        candidate_ids.extend(str(film.get("imdb_id") or "") for film in films)
+        try:
+            rt_ids = _wikidata_rt_ids(candidate_ids, sess)
+        except Exception:  # noqa: BLE001 - optional enrichment, never fatal
+            rt_ids = {}
 
     def get_index() -> ImdbIndex | None:
         """Load the local join lazily, and do not download a partial set.
@@ -2407,6 +2493,8 @@ def enrich(
             return entry, False, bool(errors), False
 
         imdb_id = candidate.imdb_id or None
+        if not rt_slug and imdb_id:
+            rt_slug = rt_ids.get(imdb_id, "")
         if candidate.needs_review:
             entry = _seed_entry(old, imdb_id=imdb_id)
             entry["imdb_id"] = imdb_id
@@ -2468,22 +2556,45 @@ def enrich(
         if not mc_slug:
             mc_slug = candidate.mc_slug
 
+        # The IMDb match knows the film's real year even when the calendar
+        # row does not; use it to disambiguate same-titled remakes on RT.
+        rt_year = year or candidate.candidate_year
+
         if scrape and rt_value is None:
-            slugs = []
+            tried: list[str] = []
             if rt_slug:
-                slugs.append(rt_slug)
-            slugs.extend(rt_slug_candidates(title, year))
-            for slug in dict.fromkeys(slugs):
+                tried.append(rt_slug)
                 try:
-                    scores, url = _rt_scores(slug, fetcher, 25.0, expected_year=year)
+                    scores, url = _rt_scores(rt_slug, fetcher, 25.0, expected_year=rt_year)
                 except (SourceStopped, FetchError) as exc:
                     errors.append(exc)
-                    break
-                if scores.get("critics") is not None:
-                    rt_value = scores["critics"]
-                    entry["rt_url"] = url
-                    source_new.append("rt-scrape")
-                    break
+                else:
+                    if scores.get("critics") is not None:
+                        rt_value = scores["critics"]
+                        entry["rt_url"] = url
+                        source_new.append("rt-scrape")
+
+            if rt_value is None and rt_year is not None:
+                # A guessed slug without a year is how a 2025 short gets the
+                # 1986 film's Tomatometer.  The Wikidata slug above is exact
+                # and needs no year; guesses do.
+                slugs = [
+                    slug for slug in rt_slug_candidates(title, rt_year)
+                    if slug not in tried
+                ]
+                for slug in dict.fromkeys(slugs):
+                    try:
+                        scores, url = _rt_scores(
+                            slug, fetcher, 25.0, expected_year=rt_year
+                        )
+                    except (SourceStopped, FetchError) as exc:
+                        errors.append(exc)
+                        break
+                    if scores.get("critics") is not None:
+                        rt_value = scores["critics"]
+                        entry["rt_url"] = url
+                        source_new.append("rt-scrape")
+                        break
 
         if mc_value is None and mc_slug:
             # Wikidata often supplies a verified MC slug; use it before the
@@ -2534,7 +2645,7 @@ def enrich(
                 entry["imdb_votes"] = imdb_votes
         if rt_value is not None:
             entry["rt"] = rt_value
-        if rt_slug:
+        if rt_slug and not entry.get("rt_url"):
             entry["rt_url"] = RT_MOVIE_URL.format(slug=_clean_rt_slug(rt_slug))
         if mc_value is not None:
             entry["mc"] = mc_value
@@ -2591,7 +2702,16 @@ def enrich(
         ck = cache_key(title, year)
         old = cache.get(ck)
 
-        if isinstance(old, dict) and _is_fresh(old, ttl_days):
+        # A fresh row without an RT score is not "done" on the opt-in path:
+        # the first run often resolves the IMDb id only after the P1258 batch
+        # was built, so the next run retries those rows and fills the chip.
+        missing_rt = (
+            scrape
+            and isinstance(old, dict)
+            and bool(old.get("imdb_id"))
+            and old.get("rt") is None
+        )
+        if isinstance(old, dict) and _is_fresh(old, ttl_days) and not missing_rt:
             stats["cached"] += 1
             _count_scores(stats, old)
             emit(key or ck, old, "cached")

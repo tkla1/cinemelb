@@ -51,6 +51,9 @@ class FakeSession:
             return result
         return FakeResponse()
 
+    def post(self, url, **kwargs):
+        return self.get(url, **kwargs)
+
 
 def _claims(**values):
     """Build the Wikidata claim shape used by the fixtures."""
@@ -625,6 +628,37 @@ class TestRottenTomatoes(unittest.TestCase):
         self.assertIsNone(wrong["critics"])
         right, _ = ratings._rt_scores("dune", fetcher, 25, expected_year=2024)
         self.assertEqual(right["critics"], 95)
+
+
+class TestWikidataRtIds(unittest.TestCase):
+    def test_imdb_id_maps_to_rt_slug(self):
+        payload = {
+            "results": {
+                "bindings": [
+                    {"imdb": {"value": "tt0133093"}, "rt": {"value": "m/matrix"}},
+                    {"imdb": {"value": "tt0080339"}, "rt": {"value": "m/airplane"}},
+                    {"imdb": {"value": "tt0000001"}},
+                ]
+            }
+        }
+        session = FakeSession(lambda url, kw: FakeResponse(payload=payload))
+        out = ratings._wikidata_rt_ids(
+            ["tt0133093", "tt0080339", "tt0000001", "not-an-id"], session
+        )
+        self.assertEqual(out, {"tt0133093": "matrix", "tt0080339": "airplane"})
+        self.assertEqual(len(session.calls), 1)
+        query = session.calls[0][1]["data"]["query"]
+        self.assertIn("tt0133093", query)
+        self.assertNotIn("not-an-id", query)
+
+    def test_query_failure_is_not_fatal(self):
+        session = FakeSession(lambda url, kw: FakeResponse(status=500))
+        self.assertEqual(ratings._wikidata_rt_ids(["tt0133093"], session), {})
+
+    def test_empty_input_makes_no_request(self):
+        session = FakeSession(lambda url, kw: FakeResponse())
+        self.assertEqual(ratings._wikidata_rt_ids([], session), {})
+        self.assertEqual(session.calls, [])
 
 
 class TestMetacritic(unittest.TestCase):

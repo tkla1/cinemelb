@@ -14,6 +14,22 @@ with any UA (Chrome, curl, python-requests). Akamai-fronted, no JS challenge at
 **Dead ends:** `/napi/*` → 401 (needs a token the page no longer exposes);
 `/api/private/v2.0/*` → 404; RT site search → robots-disallowed.
 
+**Finding the slug:** do not guess it from the title. `/m/the_fly` is a 2025
+short; the 1986 film is `/m/1133213-fly`. Join the IMDb id instead: Wikidata
+`P345` (IMDb ID) → `P1258` (Rotten Tomatoes ID), batched 50 ids per SPARQL
+query:
+
+```sparql
+SELECT ?imdb ?rt WHERE {
+  VALUES ?imdb { "tt0133093" "tt0080339" }
+  ?film wdt:P345 ?imdb .
+  OPTIONAL { ?film wdt:P1258 ?rt . }
+}
+```
+
+The value is `m/matrix`; strip the `m/`. Coverage is 177/239 of the current
+catalogue; the rest fall back to generated slugs with the page's own year gate.
+
 **Where the scores are:** `<script id="media-scorecard-json" type="application/json">`
 
 ```json
@@ -86,9 +102,10 @@ Practical risk for a personal, non-commercial site showing a score next to a
 deep link is low, but that is a risk assessment, not permission. Cleaner
 alternatives, cheapest first:
 
-1. **OMDb** free key (~1,000 requests/day) returns IMDb + RT + Metacritic in one
-   response. Content is CC BY-NC 4.0; provenance is itself scraped, one hop
-   removed.
+1. **OMDb** free key (~1,000 requests/day) returns IMDb + Metacritic, but as of
+   2026-11-26 it no longer returns a Tomatometer (`tomatoes=true` is `N/A` and
+   the `Ratings` array has no RT row). Content is CC BY-NC 4.0; provenance is
+   itself scraped, one hop removed.
 2. **MDBList** supporter API — RT + MC + IMDb under one contract.
 3. **Drop RT/MC** and ship IMDb (bulk) + TMDB.
 

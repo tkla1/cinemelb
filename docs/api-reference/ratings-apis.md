@@ -5,7 +5,9 @@ browser never calls these.
 
 ## OMDb (the "DVDb for films")
 
-One free key returns IMDb, Rotten Tomatoes and Metacritic for a title.
+One free key returns IMDb and Metacritic for a title. It **no longer returns
+Rotten Tomatoes**: a 2026-11-26 check of classic and current titles had no RT
+row, and `tomatoes=true` returned `N/A`.
 
 ```
 GET https://www.omdbapi.com/?apikey=<KEY>&i=tt15239678
@@ -16,7 +18,6 @@ GET https://www.omdbapi.com/?apikey=<KEY>&t=Dune%20Part%20Two&y=2024&type=movie
 {"Title":"Dune: Part Two","Year":"2024","imdbRating":"8.4","imdbVotes":"809,060",
  "Metascore":"79",
  "Ratings":[{"Source":"Internet Movie Database","Value":"8.4/10"},
-            {"Source":"Rotten Tomatoes","Value":"92%"},
             {"Source":"Metacritic","Value":"79/100"}],
  "Response":"True"}
 ```
@@ -27,7 +28,9 @@ GET https://www.omdbapi.com/?apikey=<KEY>&t=Dune%20Part%20Two&y=2024&type=movie
   <https://www.omdbapi.com/apikey.aspx>.
 - `Response:"False"` with `Error:"Movie not found!"` is the miss shape.
 - `Ratings[]` is no longer in the published Swagger but still returned; parse
-  defensively and fall back to `imdbRating`/`Metascore`.
+  defensively and fall back to `imdbRating`/`Metascore`. Expect no
+  `Rotten Tomatoes` entry: use the Wikidata `P1258` join and parse RT's page
+  (opt-in) for a Tomatometer.
 - Content is CC BY-NC 4.0; provenance is scraped upstream, so the legal position
   is "one vendor removed", not "licensed from RT".
 
@@ -119,9 +122,10 @@ fallback for IDs.
    - **C**: margin < 0.15, or runtime/votes disagree → store `needs_review`,
      don't display.
    - **D**: none → hide the badge.
-4. **Fetch scores by tconst** — IMDb from the bulk TSV; RT/MC from OMDb when
-   keyed; MC keyless via the finder endpoint below; RT keyless only under
-   `scrape=True`.
+4. **Fetch scores by tconst** — IMDb from the bulk TSV; MC from OMDb when keyed,
+   else the keyless finder below. RT has no OMDb path any more: map `P345` to
+   `P1258` in one batched Wikidata query, then parse the RT page only under
+   `scrape=True` (RT `/search` is robots-disallowed).
 
 ### Metacritic finder (keyless, ~92% coverage)
 

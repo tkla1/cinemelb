@@ -26,7 +26,8 @@ ARCHITECTURE: vanilla JS IIFE — cinemelb/web/app.js (~82,000 B), one styleshee
   _headers, robots.txt, data/bundle.json}. Render functions are private to the IIFE, with a
   frozen window.CINEMELB.render namespace for the gallery.
 
-CONSTRAINTS: Cloudflare Pages static, no server, no CSP header, hashed assets immutable
+CONSTRAINTS: Cloudflare Pages static (D-019: unmetered bandwidth, 200-status SPA fallback,
+  `_headers` honoured), no server, no CSP header, hashed assets immutable
   (1 year), bundle cached 5 min + revalidate, nosniff + strict-origin-referrer.
   No offline/SW. Runtime network: one Nominatim geocode on explicit typed address, plus
   remote poster images (IMDb CDN / venue hosts). Browser matrix: iOS Safari 16+,
@@ -102,11 +103,11 @@ discover structure that an aria snapshot would state for free).
 |---|---|
 | Tech | Vanilla ES5-compatible IIFE, no modules, no polyfills; native HTML elements first |
 | Build | Zero-build. `cinemelb export` copies/hashes `cinemelb/web/*` only; no npm, no Tailwind CLI |
-| Deploy | Cloudflare Pages, static, root base path `./`, hash routing, SPA fallback to index.html |
+| Deploy | Cloudflare Pages (D-019), static, root base path `./`, hash routing, SPA fallback to index.html; Direct Upload, so `dist/` stays a gitignored artifact |
 | CSP | None today. Any new inline handler is a liability; prefer delegated listeners. Security design in `docs/security-design.md`; external assets require SRI (D-012) |
 | Offline | No. Bundle is fetched once; no service worker |
 | Security | Untrusted by default: scraped text and URLs. Four output contexts (terminal, HTML text/attr, URL, inline script) each have one helper in `cinemelb/sanitize.py`; `export` filters URLs at the trust boundary; the loopback server checks `Host`; `export --out` refuses unmarked directories. Invariants INV-1..INV-10 in `docs/security-design.md` |
-| Licensing | IMDb datasets non-commercial; OMDb CC BY-NC; Metacritic keyless finder undocumented; RT automation against ToS (opt-in only). App code has **no LICENSE file** (open question) |
+| Licensing | IMDb datasets non-commercial; OMDb CC BY-NC (IMDb/Metacritic only — it no longer returns RT); Metacritic keyless finder undocumented; RT page parsing against ToS (opt-in only, no `/search`). App code has **no LICENSE file** (open question) |
 | Bundle budget | §8 caps; exceeding one requires a decision entry |
 | Browser matrix | iOS Safari 16+, Android Chrome (last 2), Chrome/Edge (last 2), Firefox ESR |
 | Data/privacy | Typed places persisted in localStorage; GPS coordinates in memory only; no keys or PII in the bundle; Nominatim is the only outbound call, on user action |
@@ -122,7 +123,7 @@ file. The bundle is versioned rather than back-compatible: a field change bumps
 |---|---|---|---|---|
 | bundle | `{version:3, generated:ISO, counts:{cinemas,films,screenings,dates,urls,rated,posters}, cinemas[], films[], aliases{}, screenings[], dates[], formats[], attrs[], screens[], urls[], places[]}` | `export.build_bundle` | `_validate()` raises `SystemExit` on version/arity/index/range/alias errors | Export aborts — never a half-valid deploy |
 | film row | 15 fields: `[key:str, title:str, year:int\|null, rating:str, runtime:int\|null, genres:str[], poster:str, synopsis:str(<=200), trailer:str, imdb_id:str, imdb:float\|null, rt:int\|null, mc:int\|null, rt_url:str, mc_url:str]` | `store.films()` + ratings + posters | arity 15; imdb 0..10; rt/mc 0..100; imdb 0 and mc 0 normalised to null | Missing score -> null -> chip omitted; never `0` or `—` |
-| cinema row | 10 fields: `[name, chain, suburb, address, website, tags:str[], lat:float\|null, lon:float\|null, phone, booking_url]` | `store.cinemas(active_only=True)` | arity 10; lat/lon rounded 5dp | No coords -> Maps link falls back to name+address; no address and no links -> venue meta omitted |
+| cinema row | 10 fields: `[name, chain, suburb, address, website, tags:str[], lat:float\|null, lon:float\|null, phone, booking_url]`; `tags` always carries the derived `independent` tag for non-big-brand venues and never for `CHAIN_BRANDS` (Hoyts, Village, Reading, Palace, IMAX) | `store.cinemas(active_only=True)` + `export._cinema_tags` | arity 10; lat/lon rounded 5dp; `independent` unique and authoritative for the type filter | No coords -> Maps link falls back to name+address; no address and no links -> venue meta omitted; absent tag would read as chain |
 | screening row | 9 ints: `[date_i, film_i, minute, cinema_i, format_i, attr_i, sold:0\|1, url_i(-1=none), screen_i]` | `store.screenings()` | each index in range; minute 0..1439; sold in {0,1}; url -1..len-1 | Dangling index aborts export |
 | dates / formats / attrs / screens / urls | sorted string tables; attrs is `string[][]` of canonical badges (`CC, AD, Open Captions, HI, Subtitled, NFT`) in fixed order | export | attr spellings canonicalised before indexing | UI renders one vocabulary; unknown badge kept verbatim |
 | places | `[[name, lat, lon], ...]` = landmarks + every venue suburb | `geo.known_places()` + registry | lat -90..90, lon -180..180, non-empty name | No places -> export aborts (SPA cannot geocode) |
@@ -130,12 +131,12 @@ file. The bundle is versioned rather than back-compatible: a field change bumps
 | posters.json | map `film key -> {url, source, imdb_id, matched_title, matched_year, confidence, match_method, status, fetched_at}` (gitignored) | `cinemelb posters` | exact/near-exact/year±1/ratings-id only; Palace `/poster/` treated as placeholder | No entry -> venue poster if real, else initials tile |
 | title contract | `titles.display_title()` strips programme/venue prefixes (`BFF26`, `JIFF:`, `MIFF`, `JFF`, `SFF`, `CASFFA:`, `Cult Classix:`, `Astor:`, `Palace Cinemas:`, ...) at ingestion; `film_key()` keys on the cleaned title; `Store.normalise_films()` rewrites and merges collisions, original strings kept in SQLite `aka` and shipped in the bundle `aliases` map | `cinemelb/titles.py`, `models.film_key`, `store.normalise_films`, `export.build_bundle` | `tests/test_titles.py`, `tests/test_export.py`; conservative guards: bare `Astor`/`Palace` alone untouched, bare-word strip only for `astor`/`cult classix`, `_CODE` case-sensitive so "Staff Only" survives | Regression = duplicate film rows, broken rating/cover joins, festival noise in search |
 | aliases | map `film key -> [published title, ...]` for films whose `aka` differs from the cleaned title; 79 films today | `store.films()[].aka`, normalised in `build_bundle` | `_validate`: keys are exported films, lists non-empty strings <=160 chars; title-equal aliases dropped | Missing alias -> that spelling does not match; an empty map is valid |
-| derived fields | `minute + 1440` and `date - 1` for starts before 06:00 at index time; first exported day's early rows dropped | `app.js::index` | `isPast`/`isTooSoon` compare absolute minutes | A 00:31 session belongs to the previous listing day, shown as `12:31am` |
+| derived fields | `minute + 1440` and `date - 1` for starts before 06:00 at index time; first exported day's early rows dropped; `independent` tag on each cinema row | `app.js::index`, `export._cinema_tags` | `isPast`/`isTooSoon` compare absolute minutes; `cinemaKind` reads the tag | A 00:31 session belongs to the previous listing day, shown as `12:31am`; a missing tag falls back to "chain" rather than mislabelling a multiplex |
 
 Deploy freshness: `counts` + `generated` + last date are printed in the footer. The app
 checks `Content-Type` before parsing so an SPA-fallback HTML page cannot be "parsed" as
-JSON. Current `dist` (rebuilt after the title fix) reports 390 films, 58 cinemas,
-19,057 screenings, 128 dates, 320 covers, 216 rated.
+JSON. Current `dist` reports 390 films, 58 cinemas, 19,057 screenings, 128 dates, 320
+covers, 217 IMDb-rated, 184 with a Tomatometer (D-018), 238 KB gzipped.
 
 Security at the data boundary: `Cinema`/`Film`/`Screening.__post_init__` strip C0/C1 control
 characters, so no adapter can put ESC/BEL into the store. `build_bundle` admits only
@@ -149,7 +150,7 @@ reintroduce a `javascript:` link. The bundle contract is v3: v2 plus the `aliase
 | App shell | all | `app-header`, `brand`, `theme-toggle`, `clock` | default, scrolled/sticky, light, dark, 320px | clock hidden <640px; no loading state |
 | Search box + suggestions | all | `search-box`, `search-suggest`, `suggest-option`, `suggest-all` | closed, open, no-match, 6 results, keyboard-selected, query preserved | `sug-empty` "No films match"; suggestions closed on route change |
 | Day rail | all | `day-rail`, `day-rail-item` | default, hover, focus-visible, current (`aria-current="date"`), 14-day window, scrolled | not rendered before bundle; no error state |
-| Filter bar | day, film | `filter-bar`, `filter-chip`, `filter-select`, `clear-filters` | off, on (`aria-pressed`), disabled n/a, horizontal scroll <640px, chain absent when 1 chain, "within" absent until place | hidden on search route |
+| Filter bar | day, film | `filter-bar`, `filter-chip`, `filter-select`, `clear-filters` | off, on (`aria-pressed`), disabled n/a, horizontal scroll <640px, cinema type (all / chains / independents), chain list narrowed by type, chain absent when 1 chain, "within" absent until place | hidden on search route |
 | Near bar | day, film | `near-bar`, `near-me`, `near-input`, `near-status`, `near-clear` | unset, requesting (button disabled + status), set (distance line), denied, insecure context, 15s timeout, geolocation vs typed | error text names the platform cause; input remains usable; hidden on search route |
 | Day list — by film | `#/`, `#/day/<iso>` | `film-list`, `film-card`, `film-times`, `film-open` | collapsed, expanded, soon pill, +N overflow, sold-out-free (card level), no place, place set, 1 vs many cinemas | three distinct empties: no sessions that day / day over / filters hid N sessions with Clear |
 | Day grid — poster tiles | same | `poster-grid`, `poster-tile`, `poster`, `poster-fallback` | 3 cols phone, 8 max desktop, no cover, broken image, no scores, next session not today, long title (2-line clamp) | same empties as list |
@@ -452,6 +453,14 @@ run.
   check: static: uv run python scripts/security_gate.py
   status: passing (2026-11-26; ~1.1s; gate caught a staged AWS-shaped key and an
           unreachable history blob during its own test, then both were purged)
+
+AC-041 [must] The cinema-type filter offers All / Cinema chains / Independent cinemas; choosing
+one restricts every day and film view to venues whose bundle row carries (or omits) the derived
+`independent` tag, and the chain dropdown only offers brands in that half. Clearing the filter
+restores the unfiltered list.
+  given: #/day/<date> with the first indie session, then cinema-type=indie
+  check: dom: uv run python tests/ui/states.py  (independent-filter case)
+  status: passing (2026-11-26; 41 chain / 17 independent venues in the bundle)
 ```
 
 ## 10. Decision log
@@ -713,6 +722,104 @@ Consequences: `_validate` rejects dangling or empty aliases; the bundle grows ~4
 Revisit if: alias volume passes ~200 films, or non-Latin aliases need folding — then add a
 normalised search key rather than loosening substring matching.
 
+### D-017 Cinema type is a derived bundle tag (2026-11-26)
+
+Context: the registry's `chain` field is empty for most independents but also non-empty for
+the suburban Metro and United brands, so the UI cannot split "big chain" from "independent"
+from that field alone. The request was a filter between the big chains and indie cinemas.
+Decision: `export._cinema_tags` appends one `independent` tag to every cinema row whose chain
+is not in `CHAIN_BRANDS` = {Hoyts, Village, Reading, Palace, IMAX}, and strips any hand-written
+duplicate. The SPA reads the tag (`cinemaKind`) and narrows the chain dropdown to the selected
+half; changing type resets a chain that no longer applies. The bundle stays v3: tags already
+exist, so no row arity or consumer changes.
+Rejected: duplicating the brand list in `app.js` (two sources of truth); a new cinema-row
+field or top-level map (schema/validation churn for one boolean); using `chain != ""` as the
+test (would make Metro and United chains).
+Consequences: Palace counts as a chain despite its arthouse catalogue; the split changes in
+one Python constant. A future per-venue override needs a registry field, not a regex.
+Revisit if: a venue changes brand, or users want a third bucket (festival/ACMI).
+
+### D-018 Rotten Tomatoes via Wikidata P1258, not OMDb (2026-11-26)
+
+Context: the site shipped zero RT chips. The pipeline assumed OMDb returned a Tomatometer in
+its `Ratings` array; as of 2026-11-26 a fresh key returns only IMDb and Metacritic for every
+tested title (classics and current releases). RT slugs are not derivable from a title
+(`/m/the_fly` is a 2025 short; the 1986 film is `/m/1133213-fly`), RT's private JSON search is
+404, and its site search is disallowed in robots.txt.
+Decision: when `--scrape-rt-mc` is passed, `_wikidata_rt_ids` joins the catalogue's IMDb IDs
+(`P345`) to RT IDs (`P1258`) with batched SPARQL requests (50 per query, five for today's 239
+IDs), then `_rt_scores` reads the film page's scorecard with its year gate. Generated slug
+guesses remain as a fallback for films Wikidata does not map; no request touches `/search`.
+Rejected: flipping the scrape default (RT/MC terms forbid automated collection; stays
+explicit); trusting OMDb's `tomatoes=true` legacy fields (return `N/A`); RT site search
+(robots-disallowed, and the project's politeness rule forbids it); fuzzy title matching (puts
+a remake's score on the original); the RT sitemap index (76 MB for a join Wikidata already
+provides); a paid RT API (no public tier).
+Consequences: one page request per resolved film, cached for the TTL; 177/239 IMDb IDs resolve
+today; `data/ratings.json` carries `rt`/`rt_url`; the footer names RT as a source. OMDb stays
+optional for MC coverage.
+Revisit if: Wikidata coverage drops below ~70%, or OMDb restores RT data.
+
+### D-019 Host: Cloudflare Pages, because bandwidth is unmetered and SPA fallback is free (2026-11-25)
+
+Context: the request was "research online and find a suitable free service to eventually
+deploy this app as an SPA webapp. Maybe github pages or vercel". The app is a Python + SQLite
+SSR server, so an SPA is a *different shape*: a static export (JSON bundle + vanilla JS) with
+no server at all. Four free hosts were compared on the same five axes — bandwidth, SPA
+deep-link behaviour, custom cache headers, commercial-use terms, and how a *daily data
+refresh* interacts with the free tier — and the winner was verified with a throwaway deploy
+before the real one.
+Decision: **Cloudflare Pages**, Direct Upload (`npx wrangler pages deploy dist --project-name
+cinemelb --branch main`). The deciding properties, in order:
+1. **Bandwidth is unmetered.** The bundle is ~235 KB gz loaded once per visit; 100 GB/month on
+   the rivals is a ceiling this app would have to keep thinking about, and Cloudflare's is not.
+2. **SPA deep links need no configuration.** Cloudflare answers an unknown path with
+   `index.html` and a 200, so hash routing plus any hand-typed URL works with no `_redirects`
+   entry and no `404.html` copy. GitHub Pages serves its 404 fallback **with a 404 status** and
+   needs the copy trick; Vercel needs a `vercel.json` rewrite.
+3. **`_headers` is honoured**, which is what makes the cache contract in §8 possible: hashed
+   assets `max-age=31536000, immutable`, the bundle `max-age=300, must-revalidate`, plus
+   nosniff and referrer policy. GitHub Pages has **no custom headers** (assets get the fixed
+   600 s cache), so hashed-forever assets would be revalidated every ten minutes.
+4. **No commercial-use clause and no public-repo requirement.** Vercel Hobby is
+   non-commercial-only; GitHub Pages requires a public repo on the free plan, which would
+   publish the scraper and the data.
+5. **A daily refresh fits the free tier.** Netlify's post-2025 credit model charges 15 credits
+   per production deploy against 300/month, so 30 daily deploys exhaust the allowance before
+   any bandwidth is counted. Cloudflare's 500 builds/month is defined as *git-push-triggered*
+   builds, so Direct Upload deploys do not consume it.
+
+Rejected:
+- **GitHub Pages** — the requested default, and the closest runner-up: static-only, no custom
+  headers, 404-status deep links, 1 GB site cap, public repo on the free plan.
+- **Vercel Hobby** — the other requested default: 100 GB/month, `vercel.json` rewrites, and an
+  explicit non-commercial-only restriction.
+- **Netlify Free** — credit-metered deploys make a refreshing app the wrong shape for it.
+- **Cloudflare Workers + D1** — the SQLite-in-the-edge path: needs a Python→JS port or WASM
+  for no gain, since the whole dataset is 235 KB gz and the query engine runs fine in memory.
+- **PythonAnywhere / Render / Fly.io / Hugging Face Spaces** — keep the Python server, which
+  contradicts the SPA decision; Render spins down, Fly.io no longer has a real free tier, and
+  PythonAnywhere is whitelist-only outbound with no custom domain on free.
+Consequences (all load-bearing for later work):
+- The deploy is a **Direct Upload**, not a git build, so `dist/` stays a gitignored build
+  artifact and the release command is a manual T5 step (§9 verification ladder).
+- `_headers` and the SPA fallback are Cloudflare semantics. **Moving hosts reopens this
+  decision**: `_headers` has no equivalent on GitHub Pages, and the fallback's 200-not-404
+  behaviour is what `app.js` tolerates.
+- The 200-with-HTML behaviour for a *missing* file is a real gotcha — a renamed or absent
+  `data/bundle.json` returns the shell, not a 404 — so the loader checks `Content-Type`
+  before `JSON.parse` (`app.js:585`), and `_headers` pins the bundle's type explicitly.
+- Refresh is still local (`cinemelb refresh` → `export` → `wrangler`); the free tier imposes no
+  schedule, so the cron/automation question is deliberately still open.
+Revisit if: bandwidth stops being unmetered, the app grows a server need (then Workers/D1 or a
+Python host re-enters), GitHub Pages gains header control, or a git-build CI deploy is wanted
+(then the 500-builds/month accounting becomes relevant).
+Verification: the choice was smoke-tested before adoption with a 4-file throwaway deploy
+(`cinemelb-spa-probe.pages.dev`): `/film/dune` and `/near/brunswick` both returned
+`200 text/html`, `/assets/app.js` returned the immutable cache header exactly as written, and
+`/assets/missing.js` returned `200 text/html` — the gotcha above, found for real rather than
+assumed. The probe project still exists and is unreferenced (`STATE.md`).
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -725,6 +832,7 @@ normalised search key rather than loosening substring matching.
 | 6 (complete 2026-11-26) | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 green via `tests/ui/film.py` (hero, safe score/venue links, three groupings, reload) | Revert `renderFilm`/`venueBlocks`; data path untouched |
 | 7 (complete 2026-11-26) | Search refinement: match `aka`/programme prefix and loose title (D-016; bundle v3 adds `aliases`) | AC-039 green via `tests/ui/alias.py`; `check_bundle.py` validates aliases; 79 aliased films | Keep the v2 bundle and old `searchMatches`; `S.aliases` defaults to `{}` so the app tolerates an older bundle |
 | 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py`, `scripts/security_gate.py` | AC-031..AC-038, AC-040 green; gate ~1.1s; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
+| 9 (complete 2026-11-26) | Cinema-type filter (D-017) + RT resolver (D-018): derived `independent` tag, chain list narrowing, Wikidata P1258 join | AC-041 green via `tests/ui/states.py`; unit tests for tag derivation and P1258 batching; RT chips populated | Revert `_cinema_tags`/`cinemaKind` and the filter bar block; revert `_wikidata_rt_ids`; the bundle stays v3 and the cache keeps its old scores |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -853,6 +961,7 @@ current `render` paths, so the manifest never lags the code.
 | 6 | Should the app gain a CSP? The one inline `onclick` on `.film-open` and the inline theme script both shape that answer. External assets now carry SRI (D-015); the map's inline JSON is escaped (D-012) | maintainer | D-007 consequences, phase 2 |
 | 7 | Is the 15s geolocation watchdog + iOS copy still correct on iOS 18/26, or does `navigator.permissions.query` allow a cleaner path? | maintainer | near-bar AC (not yet written) |
 | 8 | Does the repo get a LICENSE (code) now that posters and scores carry third-party terms? | maintainer | §4 |
+| 9 | Should the deploy be automated? Hosting is a manual Direct Upload (D-019), so `refresh → export → wrangler` runs by hand; a cron needs a scheduler decision (GitHub Actions committing regenerated data vs a Cloudflare build hook, which would move the deploy to a git build) | maintainer | D-019 consequences, T5 |
 
 ## 13. Verification commands
 
