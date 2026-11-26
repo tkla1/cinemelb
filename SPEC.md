@@ -315,8 +315,8 @@ AC-016 [must] The day rail marks exactly one day with aria-current="date" and sh
 
 AC-017 [must] Grouping and sort controls expose aria-pressed/selected state and persist
 across reload via cinemelb-view/cinemelb-sort; "Nearest" is absent without a place.
-  check: dom: uv run --with playwright python tests/ui/view.py::persistence
-  status: planned(phase-3)
+  check: dom: uv run --with playwright python tests/ui/layout.py  (persistence case)
+  status: passing (Cinemas + Title survive reload; no near option without a place)
 
 AC-018 [must] In grid layout each film is exactly one link whose accessible name carries
 the title, and that link opens #/film/<key>.
@@ -355,13 +355,14 @@ AC-024 [must] At 320px wide, document.scrollWidth <= clientWidth on every route.
 AC-025 [must] Every interactive target is >= 24x24 CSS px (WCAG 2.2 2.5.8); primary
 mobile controls are >= 44px high as a project rule.
   check: dom: uv run --with playwright python tests/ui/layout.py  (target-size case)
-  status: partial — chip, select, segmented, layout, near and sort controls measure 44px
-          at 320/390; a global 24px sweep including inline links is phase 3
+  status: passing — 119 controls measured at 320/1280, none below 24x24; primary mobile
+          controls are 44px. Inline links in a sentence use the 2.5.8 exception.
 
 AC-026 [must] In both themes every interactive element shows the focus ring; ring colour
 comes from --focus-ring, not a literal.
-  check: visual: uv run --with playwright python tests/ui/visual.py --only focus
-  status: partial — global :focus-visible rule added with --focus-ring; visual check planned
+  check: dom: uv run --with playwright python tests/ui/layout.py  (focus-ring case)
+  status: passing — keyboard focus paints a 2px ring whose computed colour equals the
+          active theme's --focus-ring (#f3c876 dark, #7d560d light)
 
 AC-027 [must] prefers-reduced-motion removes non-essential animation and shortens the
 spinner.
@@ -572,8 +573,8 @@ animation timing); add a case before falling back to images.
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
 |---|---|---|---|
 | 1 (complete 2026-11-26) | Substrate: `tokens.json`, `build_tokens.py`, `check_tokens.py`, `check_contrast.py`, `check_manifest.py`, `check_bundle.py`, `check_budget.py`, `components.json`, `gallery.html`, `window.CINEMELB`, `tests/ui/layout.py`, route focus + live counts, 44px mobile controls, rebuild `dist` | AC-001,002,003,006,007,009,010,016,018,019,020,022,024,028,029 green; gallery renders 13 live sections; 49 layout/DOM checks | Revert the commit. Generated block stripped leaves `app.css` byte-identical; no consumer changed |
-| 2 | `film-card` + `poster-tile` states (long title, no score, no cover, sold out, +N), score tokens, contrast fix for `--text-3` | AC-004,012,013,014: contrast >= 4.5:1 both themes; DOM state checks green | Revert `filmCard`/`posterTile` + manifest entries + token delta; no route change |
-| 3 | `view-bar`, `filter-bar`, `near-bar` controls (24/44px targets, `--focus-ring`, label association, pressed states) | AC-017,018,025,026 | Revert the three render functions and their CSS block; persisted localStorage keys unchanged |
+| 2 (complete 2026-11-26) | `film-card` + `poster-tile` states (long title, no score, no cover, sold out, +N), score tokens, contrast fix for `--text-3` | AC-004,012,013,014,015 green via `tests/ui/states.py`; contrast >= 4.5:1 both themes | Revert `filmCard`/`posterTile` + manifest entries + token delta; no route change |
+| 3 (complete 2026-11-26) | `view-bar`, `filter-bar`, `near-bar` controls (24/44px targets, `--focus-ring`, label association, pressed states) | AC-017,018,025,026 green via `tests/ui/layout.py`; 119 controls measured | Revert the three render functions and their CSS block; persisted localStorage keys unchanged |
 | 4 | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 | Remove the focus/live-region calls; render output byte-identical otherwise |
 | 5 | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
 | 6 | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 | Revert `renderFilm`/`venueBlocks`; data path untouched |

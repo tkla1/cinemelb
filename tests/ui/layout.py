@@ -5,40 +5,45 @@ Run: uv run --with playwright python tests/ui/layout.py
 
 from __future__ import annotations
 
-import functools
-import json
 import sys
-import threading
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-ROOT = Path(__file__).resolve().parents[2]
-DIST = ROOT / "dist"
-FAILS: list[str] = []
+from harness import check, load_bundle, report, serve
 
 
-def check(condition: bool, message: str) -> None:
-    if condition:
-        print(f"OK   {message}")
-    else:
-        print(f"FAIL {message}")
-        FAILS.append(message)
+CONTROLS_JS = r"""
+() => {
+  const nodes = [...document.querySelectorAll(
+    'button, select, input, summary, .rail-day, .tile')]
+    .filter(el => el.getClientRects().length);
+  return nodes.map(el => {
+    const r = el.getBoundingClientRect();
+    return {
+      tag: el.tagName, cls: el.className || '',
+      label: el.getAttribute('aria-label') || '',
+      w: Math.round(r.width), h: Math.round(r.height)
+    };
+  });
+}
+"""
 
-
-def serve(directory: Path) -> tuple[ThreadingHTTPServer, str]:
-    handler = functools.partial(SimpleHTTPRequestHandler, directory=str(directory))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, f"http://127.0.0.1:{server.server_address[1]}/"
+FOCUS_JS = r"""
+() => {
+  const el = document.activeElement;
+  if (!el) return null;
+  const s = getComputedStyle(el);
+  return {tag: el.tagName, cls: el.className || '',
+          color: s.outlineColor, style: s.outlineStyle, width: s.outlineWidth};
+}
+"""
 
 
 def main() -> int:
-    bundle = json.loads((DIST / "data" / "bundle.json").read_text(encoding="utf-8"))
+    bundle = load_bundle()
     film = next((row for row in bundle["films"] if row[6] and row[10] is not None),
                 bundle["films"][0])
-    server, base = serve(DIST)
+    server, base = serve()
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
@@ -139,15 +144,74 @@ def main() -> int:
                 check(film_title == film[1],
                       f"{label}: film page heading is {film[1]!r}")
                 page.close()
+
+            # AC-025 / AC-026: control sizes and the token focus ring, at both
+            # ends of the layout range. A control is a button, select, input or
+            # summary; inline links in a sentence are exempt from 2.5.8.
+            rings = {"dark": "rgb(243, 200, 118)", "light": "rgb(125, 86, 13)"}
+            for width, height, label in ((320, 800, "320px"), (1280, 800, "desktop")):
+                page = browser.new_page(viewport={"width": width, "height": height})
+                page.goto(base, wait_until="networkidle")
+                page.wait_for_selector(".film, .tile")
+                controls = page.evaluate(CONTROLS_JS)
+                small = [c for c in controls if c["w"] < 24 or c["h"] < 24]
+                check(not small,
+                      f"{label}: every control is at least 24x24 "
+                      f"({len(controls)} measured, {len(small)} small)")
+                named = page.evaluate(
+                    "() => [...document.querySelectorAll('input, select')]"
+                    ".filter(el => el.getClientRects().length)"
+                    ".filter(el => !(el.getAttribute('aria-label') || "
+                    "  [...(el.labels || [])].map(l => l.textContent.trim()).join(' ')))"
+                    ".map(el => el.id || el.tagName)")
+                check(not named, f"{label}: every input/select has an accessible name ({named})")
+
+                page.keyboard.press("Tab")
+                focus = page.evaluate(FOCUS_JS)
+                theme = page.evaluate("() => document.documentElement.dataset.theme")
+                check(bool(focus) and focus["style"] == "solid" and focus["width"] == "2px",
+                      f"{label}: keyboard focus shows a 2px ring ({focus and focus['tag']})")
+                check(bool(focus) and focus["color"] == rings.get(theme),
+                      f"{label}: {theme} ring uses --focus-ring ({focus and focus['color']})")
+
+                page.click("#theme")
+                page.keyboard.press("Tab")
+                focus = page.evaluate(FOCUS_JS)
+                theme = page.evaluate("() => document.documentElement.dataset.theme")
+                check(bool(focus) and focus["color"] == rings.get(theme),
+                      f"{label}: {theme} ring uses its own token ({focus and focus['color']})")
+                page.close()
+
+            # AC-017: grouping and sort persist across a reload, and "Nearest"
+            # is absent while no place is set.
+            page = browser.new_page(viewport={"width": 1280, "height": 800})
+            page.goto(base, wait_until="networkidle")
+            page.wait_for_selector(".film, .tile")
+            page.click('[data-view="cinema"]')
+            page.select_option("#sort", "title")
+            page.reload(wait_until="networkidle")
+            page.wait_for_selector(".film")
+            persisted = page.evaluate(
+                "() => ({group: document.querySelector('[data-view=\"cinema\"]')"
+                ".getAttribute('aria-pressed'),"
+                " sort: document.getElementById('sort').value,"
+                " near: !!document.querySelector('#sort option[value=\"near\"]'),"
+                " view: localStorage.getItem('cinemelb-view'),"
+                " savedSort: localStorage.getItem('cinemelb-sort')})")
+            check(persisted["group"] == "true",
+                  "grouping survives a reload (aria-pressed on Cinemas)")
+            check(persisted["sort"] == "title",
+                  f"sort survives a reload ({persisted['sort']})")
+            check(not persisted["near"],
+                  "Nearest is absent while no place is set")
+            check(persisted["savedSort"] == "title" and '"cinema"' in persisted["view"],
+                  "preferences are stored under cinemelb-view/cinemelb-sort")
+            page.close()
             browser.close()
     finally:
         server.shutdown()
 
-    if FAILS:
-        print(f"\n{len(FAILS)} layout/DOM failure(s)")
-        return 1
-    print("\nall layout/DOM checks pass")
-    return 0
+    return report()
 
 
 if __name__ == "__main__":
