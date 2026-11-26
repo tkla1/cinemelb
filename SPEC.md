@@ -511,7 +511,7 @@ with +N. The meta line names a relevant venue and, with a place set, the distanc
 time for the nearest one.
   check: dom: uv run python tests/ui/states.py  (card-times case) and layout.py
   status: passing (2026-11-26; 3 pills at 390px, +N for a busy film, nearest/next venue in meta)
-  evidence: scratch/visual/phase13-day-30f5833-390.png and -1280.png — the Starting
+  evidence: scratch/visual/phase13-day-df9eb69-390.png and -1280.png — the Starting
           soon module and denser cards read cleanly; verdict: keep (appearance only).
 
 AC-047 [must] Geolocation is requested on load only when permission is already granted; a
