@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 4 | Supersedes: 3
+Spec version: 5 | Supersedes: 4
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -19,9 +19,9 @@ INSTRUCTION FILES: README.md (product, deploy, bundle shape), STATE.md (handoff,
   (3) screenshots answer appearance questions only; structure is verified by aria/DOM
   checks; (4) the spec is authoritative for UI work.
 
-ARCHITECTURE: vanilla JS IIFE — cinemelb/web/app.js (~82,000 B), one stylesheet app.css
-  (~30,000 B), one shell index.html (~4,824 B). Zero-build. Entry cinemelb/web/index.html.
-  Hash routing: #/ (today), #/day/<iso>, #/film/<key>, #/search/<q>.
+ARCHITECTURE: vanilla JS IIFE — cinemelb/web/app.js (~94,000 B), one stylesheet app.css
+  (~32,000 B), one shell index.html (~4,848 B). Zero-build. Entry cinemelb/web/index.html.
+  Hash routing: #/ (today), #/day/<iso>, #/film/<key>[?time=<bucket>], #/search/<q>.
   Build: cinemelb/export.py::write_site -> dist/{index.html, assets/app.<hash>.{css,js},
   _headers, robots.txt, data/bundle.json}. Render functions are private to the IIFE, with a
   frozen window.CINEMELB.render namespace for the gallery.
@@ -33,19 +33,19 @@ CONSTRAINTS: Cloudflare Pages static (D-019: unmetered bandwidth, 200-status SPA
   remote poster images (IMDb CDN / venue hosts). Browser matrix: iOS Safari 16+,
   Android Chrome, desktop Chrome/Edge, Firefox ESR. Budgets in §8.
 
-SPEC: this file (SPEC.md), version 1. It is the only UI spec.
+SPEC: this file (SPEC.md), version 5. It is the only UI spec.
 
 UI INVENTORY: 4 routes + shared chrome (header/search, day rail, filter bar, near bar,
   footer). Components exist as functions in app.js: renderRail, renderFilters, renderNear,
-  viewBar, sortSelect, layoutToggle, filmCard, posterTile, dayByFilmGrid, dayByCinema,
-  cinemaCard, dayByTime, venueBlocks, sessions, scoreChips, renderFilm, renderSearch,
-  renderSuggest. One CSS file; no per-component CSS; tokens now generated from
-  tokens.json; components.json + gallery.html added with this spec.
+  viewBar, sortSelect, layoutToggle, cinemaSortBar, filmCard, posterTile, dayByFilmGrid,
+  dayByCinema, cinemaCard, dayByTime, venueBlocks, venueActions, sessions (session table),
+  scoreChips, renderFilm, renderSearch, renderSuggest. One CSS file; no per-component CSS;
+  tokens now generated from tokens.json; components.json + gallery.html added with this spec.
 
 DESIGN SYSTEM: cinemelb/web/tokens.json -> generated block in app.css; components.json;
   cinemelb/web/gallery.html. See §7.
 
-VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 159 tests, OK
+VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 165 tests, OK
   (skipped=1), verified 2026-11-26; `node --check cinemelb/web/app.js` -> exit 0, verified;
   `uv run python -m cinemelb export --out dist` -> bundle build + _validate();
   `uv run python scripts/check_tokens.py --coverage --literals --motion`,
@@ -154,11 +154,12 @@ reintroduce a `javascript:` link. The bundle contract is v3: v2 plus the `aliase
 | Near bar | day, film | `near-bar`, `near-me`, `near-input`, `near-status`, `near-clear` | unset, requesting (button disabled + status), set (distance line), denied, insecure context, 15s timeout, geolocation vs typed | error text names the platform cause; input remains usable; hidden on search route |
 | Day list — by film | `#/`, `#/day/<iso>` | `film-list`, `film-card`, `film-times`, `film-open` | collapsed, expanded, soon pill, +N overflow, sold-out-free (card level), no place, place set, 1 vs many cinemas | three distinct empties: no sessions that day / day over / filters hid N sessions with Clear |
 | Day grid — poster tiles | same | `poster-grid`, `poster-tile`, `poster`, `poster-fallback` | 3 cols phone, 8 max desktop, no cover, broken image, no scores, next session not today, long title (2-line clamp) | same empties as list |
-| Day — by cinema | same | `cinema-card`, `day-sub` | collapsed, expanded, distance, from-time, 1 film vs many | same empties |
-| Day — by time | same | `time-section` (`<details open>`) | open, collapsed, empty bucket omitted, late-night >24:00 label | same empties |
-| Film page | `#/film/<key>` | `film-hero`, `film-poster`, `score-chip`, `film-facts`, `trailer`, `session-section` | by day / by cinema / by time (persisted), no poster, no scores, no synopsis, many days, not found | "Film not found"; "No sessions left"; "N hidden by filters" + Clear |
+| Day — by cinema | same | `cinema-card`, `day-sub` | collapsed, expanded, distance, from-time, 1 film vs many, address shown once | same empties |
+| Day — by time | same | `time-section` (`<details open>`) | open, collapsed, empty bucket omitted, late-night >24:00 label, film links carry `?time=<bucket>` | same empties |
+| Venue block + session table | day, film | `venue-block`, `venue-actions`, `session-table` | icon actions, linked / no-url / sold-out / soon rows, time-scoped list, no repeated address | table omitted when no rows |
+| Film page | `#/film/<key>[?time=<bucket>]` | `film-hero`, `film-poster`, `score-chip`, `film-facts`, `trailer`, `session-section`, `scope-clear`, `cinema-sort` | by day / by cinema / by time (persisted), time-scoped from a day bucket, cinema sort time/distance, no poster, no scores, no synopsis, many days, not found | "Film not found"; "No sessions left"; "No <bucket> sessions" + Show all; "N hidden by filters" + Clear |
 | Search page | `#/search/<q>` | `search-head`, `search-result-grid`, `search-sort` | results, 1 result, 0 results, empty query, long query, sort by relevance/rating/title | 0 results names the query; empty query invites browsing |
-| View bar | day, film, search | `view-bar`, `sort-select`, `layout-toggle` | pressed/unpressed, Nearest absent without place, grid active, mobile wrap | n/a |
+| View bar | day, film, search | `view-bar`, `sort-select`, `layout-toggle`, `cinema-sort` | pressed/unpressed, Nearest absent without place, Distance absent without place, grid active, mobile wrap | n/a |
 | Empty / loading / error | all | `empty-state`, `loading`, `error-panel` | first paint, 404 film, wrong Content-Type, HTTP error, offline fetch | already implemented; needs aria-live + retry affordance |
 | Footer | all | `footer-meta`, `footer-notes` | ratings hidden when 0, posters hidden when 0, long date range | n/a |
 
@@ -201,13 +202,13 @@ Component set (all real, all in `app.js` today):
 | `day-rail` | stable | `renderRail` | 14 days, `aria-current="date"` |
 | `filter-bar` | stable | `renderFilters`, `onChip`, `onSelect` | chips + native selects |
 | `near-bar` | beta | `renderNear`, `requestLocation`, `setPlace` | 5 error paths incl. iOS in-app browser |
-| `view-bar` | stable | `viewBar`, `sortSelect`, `layoutToggle` | grouping + sort + grid toggle |
-| `film-card` | stable | `filmCard` | `<details>` with poster, meta, time pills, arrow |
+| `view-bar` | stable | `viewBar`, `sortSelect`, `layoutToggle`, `cinemaSortBar` | grouping + sort + grid toggle + Time/Distance |
+| `film-card` | stable | `filmCard` | `<details>` with poster, meta, time pills, arrow; time-section links carry `?time=` |
 | `poster-tile` | stable | `filmTile`, `posterTile` | one link per film; initials fallback |
 | `poster-grid` | stable | `dayByFilmGrid`, `renderSearch` | 3..8 columns |
 | `score-chip` | stable | `scoreBits`, `scoreChips` | inline in meta vs linked chips |
-| `venue-block` | stable | `venueBlocks`, `venueMeta`, `sessions` | address + Directions/Tickets/Website/phone |
-| `session-pill` | stable | `sessions` | link / static / sold-out variants |
+| `venue-block` | stable | `venueBlocks`, `venueActions` | name, suburb, distance, icon actions, session table; no repeated address |
+| `session-table` | stable | `sessions` | Time, Format table; the time is the ticket link; linked / no-URL / sold-out / soon rows |
 | `cinema-card` | stable | `cinemaCard` | day grouped by venue |
 | `time-section` | stable | `dayByTime` | `<details open>` buckets |
 | `film-hero` | stable | `renderFilm` | 132x198 cover, facts, trailer |
@@ -222,9 +223,9 @@ brotli, not measured — no brotli module installed and none to be added):
 
 | Asset | Raw | Gzip | Cap | Headroom |
 |---|---|---|---|---|
-| `data/bundle.json` (390-film v3 build) | 1,904,185 | 235.9 KB | 260 KB | 9% |
-| `app.js` | 83,803 | 22.2 KB | 26 KB | 15% |
-| `app.css` (with generated tokens) | 29,911 | 6.7 KB | 12 KB | 44% |
+| `data/bundle.json` (390-film v3 build) | 1,912,611 | 238.4 KB | 260 KB | 8% |
+| `app.js` | 94,553 | 25.1 KB | 26 KB | 3% |
+| `app.css` (with generated tokens) | 31,892 | 7.1 KB | 12 KB | 41% |
 | `index.html` | 4,848 | 1.8 KB | 6 KB | 70% |
 | Font files | 0 | 0 | 0 | system stack only |
 
@@ -307,10 +308,11 @@ AC-013 [must] A missing or broken cover renders the initials tile without layout
   check: dom: uv run python tests/ui/states.py  (poster-fallback case)
   status: passing (initials tile, absolute fallback, cover/fallback boxes equal)
 
-AC-014 [must] A session with no ticket URL renders as a non-link pill with its time; a
-sold-out session is dashed, struck through, labelled "Sold out", and unlinked.
-  check: dom: uv run python tests/ui/states.py  (session-variants case)
-  status: passing (span, no href, dashed, line-through, "Sold out")
+AC-014 [must] Session times render as a two-column table (Time, Format & screen). A
+session with no ticket URL is a non-link time cell with its time and "At venue"; a sold-out
+session is dashed, struck through, labelled "Sold out", and unlinked.
+  check: dom: uv run python tests/ui/states.py  (session-variants + session-table cases)
+  status: passing (table headers, one link per row, span/no-href for no-URL and sold out)
 
 AC-015 [must] While a filter hides every session on a day, the results region says how
 many sessions were hidden and offers a Clear control.
@@ -358,15 +360,18 @@ politely.
   check: dom: uv run python tests/ui/layout.py  (announce-count case)
   status: passing (aria-live="polite"; a filter rewrites "1 film · 1 session" to "0 films · 0 sessions")
 
-AC-024 [must] At 320px wide, document.scrollWidth <= clientWidth on every route.
-  check: dom: uv run python tests/ui/layout.py  (320px route sweep)
-  status: passing (day, search and film routes at 320px; also 390/1280)
+AC-024 [must] At 320px wide, document.scrollWidth <= clientWidth on every route,
+including a film page with the session table.
+  check: dom: uv run python tests/ui/layout.py (320px route sweep) and tests/ui/film.py
+  status: passing (day, search, film and film-table routes at 320px; also 390/1280;
+          the 296px table fits its 296px column)
 
 AC-025 [must] Every interactive target is >= 24x24 CSS px (WCAG 2.2 2.5.8); primary
 mobile controls are >= 44px high as a project rule.
-  check: dom: uv run python tests/ui/layout.py  (target-size case)
-  status: passing — 119 controls measured at 320/1280, none below 24x24; primary mobile
-          controls are 44px. Inline links in a sentence use the 2.5.8 exception.
+  check: dom: uv run python tests/ui/layout.py (target-size case) and tests/ui/film.py
+  status: passing — 109 controls measured at 320/1280, none below 24x24; the session
+          time/ticket link is at least 28px high at 320px; primary mobile controls are
+          44px. Inline links in a sentence use the 2.5.8 exception.
 
 AC-026 [must] In both themes every interactive element shows the focus ring; ring colour
 comes from --focus-ring, not a literal.
@@ -382,7 +387,7 @@ spinner.
 AC-028 [must] Budgets hold: bundle <= 260 KB gz, JS <= 26 KB gz, CSS <= 12 KB gz,
 HTML <= 6 KB gz.
   check: budget: uv run python scripts/check_budget.py dist
-  status: passing (bundle 240 KB, js 21.3 KB, css 6.7 KB, html 1.8 KB gz)
+  status: passing (bundle 238.4 KB, js 25.1 KB, css 7.1 KB, html 1.8 KB gz)
 
 AC-029 [must] A fresh export from the current database reports 390 films, 58 cinemas,
 19,057 screenings and 128 dates, matching Store counts.
@@ -393,7 +398,7 @@ AC-030 [should] The film page groups sessions by day, cinema or time, and rememb
 choice with the day view's preference.
   check: dom: uv run python tests/ui/film.py  (grouping cases)
   status: passing — Days/Cinemas/Times; the choice survives a reload; hero, score
-          chips and venue links verified in the same run
+          chips, icon venue actions and the session table verified in the same run
 
 AC-031 [must] Scraped text cannot close the map's inline script or inject an element from
 it; a title containing `</script><script>…` renders as inert JSON.
@@ -461,6 +466,30 @@ restores the unfiltered list.
   given: #/day/<date> with the first indie session, then cinema-type=indie
   check: dom: uv run python tests/ui/states.py  (independent-filter case)
   status: passing (2026-11-26; 41 chain / 17 independent venues in the bundle)
+
+AC-042 [must] A film opened from a day-view time section keeps that section's range: the card
+link carries `?time=<bucket>`, the film page names the bucket, lists only sessions inside it,
+and "Show all times" restores the full list. A film opened from the existing After filter
+keeps that filter selected.
+  given: #/day/<date>, group Times, Late night, then the film arrow
+  check: dom: uv run python tests/ui/film.py  (time-scope and after-filter cases)
+  status: passing (2026-11-26; Late night 9 -> 273 sessions after Show all times)
+
+AC-043 [should] On a film page with a place set, venues sort by their next session by
+default; a Time/Distance segmented control switches the order and persists in
+`cinemelb-view`; Distance is absent while no place is set.
+  check: dom: uv run python tests/ui/film.py  (cinema-sort case)
+  status: passing (2026-11-26; 48 venues, time then distance order, survives reload)
+
+AC-044 [must] Session times render as a table whose time cell is the single ticket link and
+carries a visible "Tickets" cue; sold-out and no-URL rows are static. Venue actions are icon
+buttons with accessible names, and the repeated film-page venue blocks omit the street
+address.
+  check: dom: uv run python tests/ui/states.py and tests/ui/film.py
+  status: passing (2026-11-26; 1 link per row, 2 Tickets cues in the sample, 746 named
+          actions, 0 addresses in day venue blocks). Appearance witness:
+          scratch/visual/phase10-film-390.png — the two-column timetable, amber Tickets cue
+          and circular icon actions read cleanly; verdict: keep.
 ```
 
 ## 10. Decision log
@@ -556,7 +585,7 @@ the search route because they describe sessions, not films.
 Rejected: grid-only (loses showtimes per venue); list-only (unbrowsable at 1,900 rows);
 a separate search HTML page (breaks the one-file shell and hash routing).
 Revisit if: result sets routinely exceed ~200 tiles on a phone, or grid tiles need session
-pills (then reuse `session-pill` inside the tile).
+times (then reuse `session-table` inside the tile).
 
 ### D-006 Ratings and covers are build-time data (shipped 2026-11-26)
 
@@ -820,6 +849,37 @@ Verification: the choice was smoke-tested before adoption with a 4-file throwawa
 `/assets/missing.js` returned `200 text/html` — the gotcha above, found for real rather than
 assumed. The probe project still exists and is unreferenced (`STATE.md`).
 
+### D-020 Film-page continuity: time scope, session table, icon actions, cinema sort (2026-11-26)
+
+Context: the day page's "Late night" section showed a film's late sessions, but opening the
+film page dropped that range and listed every session. The session display was a pile of
+pills with no visible ticket affordance; every venue block repeated the street address and
+text links; and the film page flipped its venue order to distance whenever a place was set.
+
+Decision:
+- A film link inside a time section carries `?time=<bucket>`; `renderFilm` applies that
+  bucket range **on top of** the ordinary filter bar, names the bucket in the section
+  heading, and offers "Show all times" as a route link. The scope is route state, not a
+  global filter, so Back returns to the section and the filter bar keeps working within it.
+- Session times render as a two-column table (Time | Format & screen). The time cell is the
+  one link per row and carries a visible "Tickets" cue with a ticket glyph; sold-out and
+  no-URL rows are static. The table keeps the `.sessions` wrapper and `.session` time-cell
+  vocabulary so the gallery and state checks keep working.
+- Venue actions (directions, tickets, website, phone) are icon buttons with accessible
+  names and tooltips. The street address is dropped from the repeated film-page venue
+  blocks and kept only in the day-by-cinema card, where each venue appears once.
+- Film-page venues sort by next session by default; a Time/Distance segmented control
+  (Distance only when a place is set) reorders them and persists in `cinemelb-view`.
+
+Rejected: reusing only the `after` filter (a section has a lower and upper bound; "After 9pm"
+would leak later buckets into Evening); a separate scoped film page (breaks the film page's
+own filters and Back); a flat day-wide table (loses the per-venue action row and the
+distance sort); making a whole table row a link (invalid table markup and duplicate tab
+stops); keeping text action links (the requested icon affordance).
+
+Revisit if: the film page needs a date-range picker, the session table gains price/seat
+data, or the time buckets become user-defined rather than code constants.
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -833,6 +893,7 @@ assumed. The probe project still exists and is unreferenced (`STATE.md`).
 | 7 (complete 2026-11-26) | Search refinement: match `aka`/programme prefix and loose title (D-016; bundle v3 adds `aliases`) | AC-039 green via `tests/ui/alias.py`; `check_bundle.py` validates aliases; 79 aliased films | Keep the v2 bundle and old `searchMatches`; `S.aliases` defaults to `{}` so the app tolerates an older bundle |
 | 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py`, `scripts/security_gate.py` | AC-031..AC-038, AC-040 green; gate ~1.1s; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
 | 9 (complete 2026-11-26) | Cinema-type filter (D-017) + RT resolver (D-018): derived `independent` tag, chain list narrowing, Wikidata P1258 join | AC-041 green via `tests/ui/states.py`; unit tests for tag derivation and P1258 batching; RT chips populated | Revert `_cinema_tags`/`cinemaKind` and the filter bar block; revert `_wikidata_rt_ids`; the bundle stays v3 and the cache keeps its old scores |
+| 10 (complete 2026-11-26) | Film-page continuity (D-020): time-bucket scope, session table with a ticket cue, icon venue actions, Time/Distance cinema sort | AC-042,043,044 green via `tests/ui/film.py` + `states.py`; 320px table geometry; budgets hold | Revert `renderFilm`/`dayByTime`/`filmCard`/`venueBlocks`/`sessions`/`viewBar` and the session/venue CSS blocks; no data or bundle change |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -898,18 +959,22 @@ names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end
       "since": "2026-11-26"
     },
     {
-      "id": "session-pill",
-      "name": "Session pill",
+      "id": "session-table",
+      "name": "Session table",
       "status": "stable",
       "source": "cinemelb/web/app.js",
       "render": "window.CINEMELB.render.sessions",
-      "gallery": "cinemelb/web/gallery.html#session-pill",
+      "gallery": "cinemelb/web/gallery.html#session-table",
       "props": [{"name": "rows", "type": "int[]", "required": true}],
       "states": ["linked", "no-url", "sold-out", "soon"],
-      "tokens": ["--card", "--line", "--text", "--text-3", "--accent-2", "--warn"],
-      "a11y": {"element": "a | span", "labelPattern": "<time>[ · <format> · <badges>]",
+      "tokens": ["--card", "--card-2", "--line", "--line-2", "--text", "--text-2",
+                 "--text-3", "--accent", "--accent-2", "--accent-dim", "--warn",
+                 "--focus-ring"],
+      "a11y": {"element": "table", "caption": "Sessions at <venue> on <day>",
+               "headers": "Time, Format & screen",
+               "labelPattern": "Tickets for <time> at <venue>, <day>",
                "soldOutLabel": "Sold out"},
-      "examples": ["gallery/session-pill--linked", "gallery/session-pill--sold-out"],
+      "examples": ["gallery/session-table--linked", "gallery/session-table--sold-out"],
       "since": "2026-11-26"
     },
     {
@@ -973,16 +1038,16 @@ current `render` paths, so the manifest never lags the code.
 | T1 | `uv run python scripts/check_contrast.py` | WCAG ratios from tokens.json | green (text 4.5:1; borders warning D-010) |
 | T1 | `uv run python scripts/check_manifest.py` | manifest <-> render fn <-> gallery <-> tokens | green (18 components / 25 tokens) |
 | T1 | `uv run python scripts/check_bundle.py dist/data/bundle.json` (`--titles`, `--against-db`) | arity, indices, counts, prefixes, DB parity | green |
-| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (234 / 21.9 / 6.7 / 1.8 KB gz) |
-| T1 | `uv run python scripts/security_gate.py` | secrets in worktree + every commit, ruff S-rules, JS sinks, invariants, lock, bundle | green (~1.1s, 2026-11-26) |
+| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (238.4 / 25.1 / 7.1 / 1.8 KB gz) |
+| T1 | `uv run python scripts/security_gate.py` | secrets in worktree + every commit, ruff S-rules, JS sinks, invariants, lock, bundle | green (~1.2s, 2026-11-26) |
 | T1 | `uv run python scripts/check_security.py` | output-context invariants, SRI, export guard, Host allowlist, 500 text (also run by the gate) | green (2026-11-26) |
 | T2 | `uv run python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
-| T2 | `uv run python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
+| T2 | `uv run python tests/ui/states.py` | card/tile states, session table, poster fallback, filtered empty | green |
 | T2 | `uv run python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
-| T2 | `uv run python tests/ui/film.py` | hero, score/venue link safety, film grouping persistence | green |
+| T2 | `uv run python tests/ui/film.py` | hero, icon actions, time-bucket scope, After carry, cinema sort, 320px table geometry | green |
 | T2 | `uv run python tests/ui/alias.py` | bundle aliases, alias search, title ranking, "listed as" | green |
 | T2 | `uv run python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
-| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security, gate adapters | green (159 tests, 1 skipped) |
+| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security, gate adapters | green (165 tests, 1 skipped) |
 | T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | green |
 | T4 | `uv run python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
 | T5 | `uv run python -m http.server 8801` then `/dist/` and `/cinemelb/web/gallery.html` | 320px/200% zoom, screen reader, both themes | manual, every phase |

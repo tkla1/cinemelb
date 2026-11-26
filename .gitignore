@@ -32,3 +32,7 @@ data/cinemas.db
 # local environment (uv loads .env; real keys never go in git)
 .env
 !.env.example
+
+# local agent configuration (env guard / harness)
+.opencode/
+opencode.json

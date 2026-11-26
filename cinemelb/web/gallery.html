@@ -101,15 +101,17 @@ try {
     <div class="g-stage" id="g-score-chip"></div>
   </section>
 
-  <section class="g-section" id="session-pill" data-component="session-pill">
-    <h2>session-pill <code>#session-pill</code></h2>
-    <p class="g-note">Linked, no-URL, sold-out and soon variants from real rows.</p>
-    <div class="g-stage"><div class="sessions" id="g-session-pill"></div></div>
+  <section class="g-section" id="session-table" data-component="session-table">
+    <h2>session-table <code>#session-table</code></h2>
+    <p class="g-note">Time | Format table; the time is the ticket link, and sold-out
+      or no-URL rows are static.</p>
+    <div class="g-stage"><div class="sessions" id="g-session-table"></div></div>
   </section>
 
   <section class="g-section" id="venue-block" data-component="venue-block">
     <h2>venue-block <code>#venue-block</code></h2>
-    <p class="g-note">Venue name, address, Directions/Tickets/Website/phone, sessions.</p>
+    <p class="g-note">Venue name, suburb, distance, icon actions and the session table.
+      The street address is kept for the day-by-cinema card only.</p>
     <div class="g-stage" id="g-venue-block"></div>
   </section>
 
@@ -272,8 +274,8 @@ try {
       var scoreBox = document.getElementById('g-score-chip');
       if (scoreBox) scoreBox.innerHTML = C.render.scoreChips(S.films[hero]);
 
-      // Session pills: a sample across venues
-      var sessionBox = document.getElementById('g-session-pill');
+      // Session table: a sample across venues
+      var sessionBox = document.getElementById('g-session-table');
       if (sessionBox) sessionBox.innerHTML = C.render.sessions(rows.slice(0, 8));
 
       // Venue blocks: up to three distinct venues

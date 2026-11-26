@@ -183,16 +183,18 @@ driven by the real `window.CINEMELB.render` functions, and the T0/T1 checks
 `check_budget`). Score colours and focus rings moved from literals to tokens;
 `--text-3` was raised to meet AA.
 
-Phases 2-7 are also complete: card/tile/session states, control sizes and the
+Phases 2-10 are also complete: card/tile/session states, control sizes and the
 token focus ring, live-count announcements and reduced motion, combobox option
-semantics, the film-page groupings, and alias search (bundle v3). The structural
-gate is four Playwright scripts (`layout`, `states`, `search`, `film`) plus
-`alias`, all under `tests/ui/` and run with plain `uv run python` (Playwright is
-a dev dependency). They measure geometry, computed style, focus and ARIA at
-320/390/1280 and never screenshot. Current build: bundle 235.9 KB gz, JS 22.2
-KB gz, CSS 6.7 KB gz, HTML 1.8 KB gz; 148 unit tests; text contrast 4.5:1 in both
-themes. Border contrast is a recorded phase-3 warning (D-010). `components.json`
-is the agent's index; screenshots are reserved for appearance questions.
+semantics, the film-page groupings, alias search (bundle v3), and film-page
+continuity (phase 10: time-bucket scope links, the session table, icon venue
+actions, Time/Distance cinema sort). The structural gate is four Playwright
+scripts (`layout`, `states`, `search`, `film`) plus `alias`, all under
+`tests/ui/` and run with plain `uv run python` (Playwright is a dev dependency).
+They measure geometry, computed style, focus and ARIA at 320/390/1280 and never
+screenshot. Current build: bundle 238.4 KB gz, JS 25.1 KB gz, CSS 7.1 KB gz,
+HTML 1.8 KB gz; 165 unit tests; text contrast 4.5:1 in both themes. Border
+contrast is a recorded phase-3 warning (D-010). `components.json` is the
+agent's index; screenshots are reserved for appearance questions.
 
 **Security gate (26 Nov).** `uv run python scripts/security_gate.py` is the one
 deterministic, offline check: gitleaks scans the publishable snapshot and every

@@ -37,8 +37,10 @@ def main() -> int:
 
     sold_film = film_for([r for r in future_rows if r[6] == 1])
     nolink_film = film_for([r for r in future_rows if r[7] == -1 and r[6] == 0])
+    linked_film = film_for([r for r in future_rows if r[7] >= 0 and r[6] == 0])
     check(sold_film is not None, "fixture: a future sold-out session exists")
     check(nolink_film is not None, "fixture: a future session without a ticket URL exists")
+    check(linked_film is not None, "fixture: a future session with a ticket URL exists")
 
     # A film/day with more than five distinct start times, for the +N pill.
     by_film_day: dict[tuple[int, int], set[int]] = {}
@@ -170,6 +172,39 @@ def main() -> int:
                     "  time: s.querySelector('.time')?.textContent || ''} : null; }")
                 check(plain is not None and plain["href"] is None and bool(plain["time"]),
                       f"session without a ticket URL renders as a time pill ({plain})")
+
+            # The time display is a table; one link per row, and that link says
+            # "Tickets" so the affordance is visible before hovering.
+            if linked_film:
+                goto(page, base, "#/film/" + quote(linked_film[0]), ".session-table")
+                table = page.evaluate(
+                    "() => { const t = document.querySelector('.sessions .session-table');"
+                    " if (!t) return null;"
+                    " const rows = [...t.querySelectorAll('tbody tr')];"
+                    " return {headers: [...t.querySelectorAll('thead th')]"
+                    "   .map(h => h.textContent.trim()),"
+                    "  cap: t.querySelector('caption')?.textContent.trim() || '',"
+                    "  rows: rows.length,"
+                    "  links: rows.map(tr => tr.querySelectorAll('a').length),"
+                    "  cues: t.querySelectorAll('a.session .st-buy').length,"
+                    "  labels: [...t.querySelectorAll('a.session')]"
+                    "   .map(a => a.getAttribute('aria-label') || ''),"
+                    "  addrs: document.querySelectorAll('.day-block .venue-addr').length,"
+                    "  actions: [...document.querySelectorAll('.day-block .venue-link')]"
+                    "   .map(a => a.getAttribute('aria-label') || '')}; }")
+                check(table is not None, "film page renders a session table")
+                check(table and table["headers"] == ["Time", "Format & screen"],
+                      f"session table names its two columns ({table and table['headers']})")
+                check(table and table["rows"] > 0 and max(table["links"]) <= 1,
+                      "each session row has at most one link")
+                check(table and table["cues"] == table["links"].count(1),
+                      f"linked rows show the Tickets cue ({table and table['cues']})")
+                check(table and all(l.startswith("Tickets for ") for l in table["labels"]),
+                      "ticket links name the time, venue and day")
+                check(table and table["addrs"] == 0,
+                      "day venue blocks omit the repeated street address")
+                check(table and table["actions"] and all(table["actions"]),
+                      f"venue actions are named icon buttons ({table and len(table['actions'])})")
 
             # +N: five time pills then an overflow count.
             goto(page, base, f"#/day/{busy_date}", ".films .film")

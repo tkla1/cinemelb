@@ -197,7 +197,7 @@ by `SPEC.md`.
 The bundle is index-table shaped. A screening is nine integers pointing into
 shared tables (date, film, minute, cinema, format, attribute set, sold-out,
 ticket URL, screen), and the whole 19k-screening dataset is about 1.9 MB raw,
-or roughly 235 KB gzipped over the wire. Attribute spellings are canonicalised
+or roughly 238 KB gzipped over the wire. Attribute spellings are canonicalised
 (`Closed Captioning Available` → `CC`), synopses are capped at 200 characters,
 and rows are sorted by date then minute so a day is a contiguous slice.
 
@@ -217,7 +217,12 @@ ways without ever rendering 1,900 rows:
 
 A film page offers the same pivot: **by day** (day → venue), **by cinema**
 (venue → day), or **by time** (time of day → day → venue). The choice is a view
-preference, so it is remembered in `localStorage` and survives a reload.
+preference, so it is remembered in `localStorage` and survives a reload. Opening
+a film from a day's time section carries that section into the page
+(`#/film/<key>?time=late-night`): only those times are listed, the heading names
+the section, and **Show all times** clears the range. Venues default to
+next-session order; once a place is set, a **Time / Distance** control reorders
+them and is remembered with the other view preferences.
 
 **Sorting.** Beside the grouping control is a **Sort** menu: *Soonest* (the
 schedule), *Top rated*, *Title A–Z*, and *Nearest* once a location is set. Top
@@ -239,9 +244,11 @@ Those strings ship in the bundle's `aliases` map (bundle v3).
 
 The time-of-day sections collapse: click a heading to fold that part of the day
 away, which makes "what is on after work" readable without scrolling past the
-morning. And a session after midnight belongs to the **previous** listing day —
-the 00:31 on the 27th is the 26th's Late night, still shown as `12:31am` — so a
-Friday evening out does not lose its midnight session to Saturday's page.
+morning. A film card opened from a section keeps that section's range when its
+arrow opens the film page. And a session after midnight belongs to the
+**previous** listing day — the 00:31 on the 27th is the 26th's Late night, still
+shown as `12:31am` — so a Friday evening out does not lose its midnight session
+to Saturday's page.
 
 **Filters.** Beyond accessible screenings, the bar separates the big chains
 from the independents: **Cinema chains** covers Hoyts, Village, Reading, Palace
@@ -273,10 +280,12 @@ in memory only and never written to disk.
 
 **Film pages and venues.** A film card expands to times and venues in place, and
 carries a small arrow to its own page (the page used to be reachable only by
-searching). Every venue line shows its street address plus a Google Maps
-"Directions" link, and its website, booking page and phone where the registry
-has them. Session times link straight to the venue's own ticket page; when a
-session has no URL, the venue link is the fallback rather than a dead button.
+searching). Venue lines show the name, suburb and distance, with circular icon
+buttons for Directions, Tickets, Website and phone; the full street address is
+kept for the day-by-cinema card, where each venue appears once. Sessions are a
+two-column timetable — **Time | Format & screen** — and the time is the ticket
+link, labelled **Tickets** with a ticket glyph so the action is visible before
+hovering. A session with no URL shows "At venue" instead of a dead button.
 
 **Ratings.** IMDb, Rotten Tomatoes and Metacritic chips come from
 `data/ratings.json`, baked in at export time by `python -m cinemelb ratings`;

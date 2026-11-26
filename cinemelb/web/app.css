@@ -293,6 +293,8 @@ a:hover { color: var(--accent); }
 .view-row .view-bar {
   width: auto; flex: 1 1 240px; max-width: none; margin: 0;
 }
+.view-row .view-bar-sort { flex: 0 0 auto; width: auto; max-width: none; }
+.view-bar-sort .seg-btn { flex: 0 0 auto; padding: 0 12px; }
 .sort-wrap { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 .sort-label {
   font-size: 11px; font-weight: 620; text-transform: uppercase;
@@ -328,6 +330,14 @@ a:hover { color: var(--accent); }
 
 .chip-clear { border-style: dashed; color: var(--text-3); }
 .chip-clear:hover { color: var(--text); }
+a.chip { display: inline-flex; align-items: center; text-decoration: none; }
+.scope-clear { flex: 0 0 auto; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 /* ------------------------------------------------------------ location bar */
 
@@ -588,7 +598,7 @@ a:hover { color: var(--accent); }
 .venue { margin-bottom: 12px; }
 .venue:last-child { margin-bottom: 0; }
 .venue-head {
-  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
   margin-bottom: 5px;
 }
 .venue-name { font-size: 13.5px; font-weight: 620; }
@@ -599,19 +609,55 @@ a:hover { color: var(--accent); }
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .venue-meta {
-  display: flex; align-items: baseline; gap: 4px 10px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap;
   margin: 0 0 6px;
   font-size: 11.5px; color: var(--text-3);
 }
 .venue-addr { min-width: 0; }
-.venue-links { display: inline-flex; gap: 10px; margin-left: auto; }
-.venue-link { color: var(--text-2); text-decoration: none; white-space: nowrap; }
-.venue-link:hover { color: var(--accent); text-decoration: underline; }
+.venue-links { display: inline-flex; gap: 4px; margin-left: auto; }
+.venue-head .venue-links { margin-left: 0; }
+.venue-link {
+  width: 34px; height: 34px;
+  display: inline-grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: var(--panel); color: var(--text-2);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.venue-link:hover, .venue-link:focus-visible {
+  color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+}
+.venue-link svg { width: 16px; height: 16px; }
 
-.sessions { display: flex; flex-wrap: wrap; gap: 5px; }
+/* One row per session: a timetable rather than a pile of pills. The time cell
+   is the ticket link and says so; sold-out and no-URL rows are static. */
+.sessions { display: block; }
+.session-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.session-table caption { text-align: left; }
+.session-table thead th {
+  padding: 0 8px 4px;
+  font-size: 10px; font-weight: 620;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-3); text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+.session-table tbody td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.session-table tbody tr:last-child td { border-bottom: 0; }
+.session-table tbody tr:hover td { background: var(--card-2); }
+.st-when { width: 1%; white-space: nowrap; }
+.st-notes { font-size: 12px; color: var(--text-3); line-height: 1.35; }
+
 .session {
-  display: inline-flex; flex-direction: column; align-items: flex-start;
-  gap: 1px; padding: 4px 8px;
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 8px;
   border: 1px solid var(--line); border-radius: 7px;
   background: var(--card); color: var(--text);
   text-decoration: none; font: inherit;
@@ -620,8 +666,18 @@ a:hover { color: var(--accent); }
 .session:hover { border-color: var(--line-2); color: var(--text); }
 a.session:hover { border-color: var(--accent); background: var(--accent-dim); }
 .session .time { font-size: 13px; font-weight: 560; }
-.notes { font-size: 10.5px; color: var(--text-3); line-height: 1.25; }
-a.session:hover .notes { color: var(--text-2); }
+.st-buy {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 620;
+  text-transform: uppercase; letter-spacing: .04em;
+  color: var(--accent-2);
+}
+.st-buy svg { width: 11px; height: 11px; }
+.st-note {
+  font-size: 10px; font-weight: 620;
+  text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-3);
+}
 .session.is-soon { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .session.is-soon .time { color: var(--accent-2); }
 .session.is-sold { opacity: .6; border-style: dashed; }
@@ -801,6 +857,8 @@ a.session:hover .notes { color: var(--text-2); }
   .poster-grid .tile .poster-fallback { font-size: 18px; }
   .search-head h1 { font-size: 18px; }
   .seg-btn { height: 44px; font-size: 13.5px; }
+  .session-table thead th, .session-table tbody td { padding-left: 4px; padding-right: 4px; }
+  .st-notes { font-size: 11.5px; }
   .film-hero { gap: 12px; }
   .film-hero h1 { font-size: 20px; }
   .poster-lg { width: 96px; height: 144px; }
