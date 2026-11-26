@@ -25,9 +25,11 @@ __pycache__/
 .venv/
 build/
 dist/
+dist.building/
 *.egg-info/
 .pytest_cache/
 data/cinemas.db
+debug.log
 
 # local environment (uv loads .env; real keys never go in git)
 .env

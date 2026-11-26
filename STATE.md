@@ -42,6 +42,12 @@ python -m cinemelb export --out dist
 npx wrangler pages deploy dist --project-name cinemelb --branch main
 ```
 
+For a committed release, `uv run python scripts/release.py` is the deterministic
+gate: it refuses a dirty tree, runs the full T0-T3 ladder (including all five
+Playwright suites), rebuilds `dist`, pushes the current branch, deploys with a
+pinned wrangler, and polls the production alias until its hashed assets match.
+`--dry-run` runs every check and stops before push/deploy.
+
 `dist/` is gitignored — it is a build artifact of `data/cinemelb.sqlite3`.
 `cinemelb/web/` is the source shell and is committed (`.gitignore` had a blanket
 `*.html` rule that silently excluded the shell's `index.html`; there is now an

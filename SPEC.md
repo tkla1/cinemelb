@@ -48,6 +48,8 @@ DESIGN SYSTEM: cinemelb/web/tokens.json -> generated block in app.css; component
 VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 165 tests, OK
   (skipped=1), verified 2026-11-26; `node --check cinemelb/web/app.js` -> exit 0, verified;
   `uv run python -m cinemelb export --out dist` -> bundle build + _validate();
+  `uv run python scripts/release.py --dry-run` -> full release gate without push/deploy,
+  verified 2026-11-26;
   `uv run python scripts/check_tokens.py --coverage --literals --motion`,
   `check_contrast.py`, `check_manifest.py`, `check_bundle.py --titles --against-db`,
   `check_budget.py dist`, `security_gate.py` (gitleaks + ruff + JS sinks + invariants)
@@ -880,6 +882,32 @@ stops); keeping text action links (the requested icon affordance).
 Revisit if: the film page needs a date-range picker, the session table gains price/seat
 data, or the time buckets become user-defined rather than code constants.
 
+### D-021 Release gate: one deterministic script after the commit (2026-11-26)
+
+Context: releases were a hand-run ladder (`refresh -> ratings -> posters -> export ->
+wrangler`) with the same syntax, token, bundle, security and UI checks repeated from memory.
+A skipped check or a dirty tree could reach production, and the deploy could not prove the
+live alias was serving the build that was just pushed.
+
+Decision: `scripts/release.py` is the single release gate. It refuses a dirty working tree,
+runs `node --check`, the token/contrast/manifest checks, builds `dist`, then runs the bundle,
+budget, security, unit and five Playwright checks. Only after all pass does it push the
+current git branch, verify `origin/<branch>` equals `HEAD`, deploy `dist` with a pinned
+`wrangler@4.166.0` to the Pages production branch `main`, and poll
+`https://cinemelb.pages.dev` until the live hashed asset names match `dist/index.html`.
+`--dry-run` runs every check and stops before push/deploy. The data refresh remains a manual
+pre-step because it needs network and the ratings/posters rights; the gate builds from the
+current database and caches.
+
+Rejected: a shell one-liner (quoting and exit-code drift across PowerShell and POSIX); a
+Makefile or npm script (two toolchains, Windows/POSIX split); deploying before pushing (the
+live build would not correspond to an upstream commit); unpinned wrangler (a tool update
+silently changes the release); letting the script refresh data (network/rights side effects
+inside a gate).
+
+Revisit if: the Pages project or production branch changes, or the release needs a data
+refresh step (add an explicit flag with network consent, not a default).
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -894,6 +922,7 @@ data, or the time buckets become user-defined rather than code constants.
 | 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py`, `scripts/security_gate.py` | AC-031..AC-038, AC-040 green; gate ~1.1s; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
 | 9 (complete 2026-11-26) | Cinema-type filter (D-017) + RT resolver (D-018): derived `independent` tag, chain list narrowing, Wikidata P1258 join | AC-041 green via `tests/ui/states.py`; unit tests for tag derivation and P1258 batching; RT chips populated | Revert `_cinema_tags`/`cinemaKind` and the filter bar block; revert `_wikidata_rt_ids`; the bundle stays v3 and the cache keeps its old scores |
 | 10 (complete 2026-11-26) | Film-page continuity (D-020): time-bucket scope, session table with a ticket cue, icon venue actions, Time/Distance cinema sort | AC-042,043,044 green via `tests/ui/film.py` + `states.py`; 320px table geometry; budgets hold | Revert `renderFilm`/`dayByTime`/`filmCard`/`venueBlocks`/`sessions`/`viewBar` and the session/venue CSS blocks; no data or bundle change |
+| 11 (complete 2026-11-26) | Release gate (D-021): `scripts/release.py` with clean-tree refusal, full check ladder, pinned wrangler, push verification and live asset-hash poll; `--dry-run` | `--dry-run` green; full run pushes, deploys and verifies the production alias | Revert the script and its README/STATE/SPEC rows; no app or data change |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -1051,7 +1080,9 @@ current `render` paths, so the manifest never lags the code.
 | T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | green |
 | T4 | `uv run python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
 | T5 | `uv run python -m http.server 8801` then `/dist/` and `/cinemelb/web/gallery.html` | 320px/200% zoom, screen reader, both themes | manual, every phase |
-| T5 | `uv run python -m cinemelb refresh && ... && npx wrangler pages deploy dist --project-name cinemelb --branch main` | deploy | manual, release gate |
+| T5 | `uv run python scripts/release.py --dry-run` | clean tree + syntax/token/contrast/manifest/export/bundle/budget/security/unit/UI checks; no push/deploy | green (2026-11-26) |
+| T5 | `uv run python scripts/release.py` | the gate + push + Pages deploy + live asset-hash poll | green (2026-11-26) |
+| T5 | `uv run python -m cinemelb refresh && ...` then `uv run python scripts/release.py` | data refresh + full release | manual refresh; gate automated |
 
 Dev preview note: `cinemelb/web/gallery.html` loads `./app.css`/`./app.js` directly and
 fetches `/dist/data/bundle.json`, so it requires a prior `export` (which also proves the

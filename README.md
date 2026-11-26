@@ -188,6 +188,20 @@ uv run python scripts/check_bundle.py --titles --against-db
 npx wrangler pages deploy dist --project-name cinemelb --branch main
 ```
 
+For a release, commit first and run the deterministic gate instead:
+
+```bash
+uv run python scripts/release.py --dry-run   # every check, no push/deploy
+uv run python scripts/release.py             # check -> push -> deploy -> live hash check
+```
+
+It refuses a dirty tree, runs the syntax/token/contrast/manifest/bundle/budget/
+security/unit/UI checks, rebuilds `dist`, pushes the current branch, deploys
+with a pinned wrangler to the Pages project, and polls
+`https://cinemelb.pages.dev` until the live hashed asset names match the build.
+`--dry-run` stops after the checks. The data refresh above remains a manual
+pre-step because it needs network and the ratings/posters rights.
+
 `dist/` is generated, not committed: the bundle is a build artifact of whatever
 is in `data/cinemelb.sqlite3` at the time. `cinemelb/web/` is the source shell
 (`index.html`, `app.css`, `app.js`, `_headers`, `tokens.json`, `gallery.html`);
