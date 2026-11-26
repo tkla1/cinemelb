@@ -14,6 +14,7 @@ machine. The deploy is pinned to a wrangler version so a release is repeatable.
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -27,14 +28,26 @@ SCRATCH = ROOT / "scratch"
 LIVE = "https://cinemelb.pages.dev/"
 PROJECT = "cinemelb"
 PAGES_BRANCH = "main"          # Cloudflare Pages production branch, not the git branch
-WRANGLER = "wrangler@4.166.0"  # bump deliberately
+WRANGLER_VERSION = "4.166.0"
 COMMAND_TIMEOUT = 900
 LIVE_TIMEOUT = 60
 ASSET_RE = re.compile(r"assets/app\.[0-9a-f]+\.(?:css|js)")
 
+DEPLOY_ROOT = SCRATCH / "wrangler-pages"
+DEPLOY_LOG = SCRATCH / "wrangler-logs"
+DEPLOY_CACHE = SCRATCH / "wrangler-cache"
+
 PY = sys.executable
 NODE = shutil.which("node")
-NPX = shutil.which("npx")
+WRANGLER = shutil.which("wrangler")
+
+
+def deploy_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["WRANGLER_LOG_PATH"] = str(DEPLOY_LOG)
+    env["WRANGLER_CACHE_DIR"] = str(DEPLOY_CACHE)
+    env["XDG_CACHE_HOME"] = str(DEPLOY_CACHE)
+    return env
 
 
 def fail(step: str, detail: str = "") -> None:
@@ -46,11 +59,11 @@ def fail(step: str, detail: str = "") -> None:
 
 
 def run(name: str, command: list[str], cwd: Path = ROOT, *,
-        soft: bool = False) -> int:
+        soft: bool = False, env: dict[str, str] | None = None) -> int:
     print(f"\n== {name}")
     print("$ " + " ".join(str(part) for part in command))
     try:
-        result = subprocess.run(command, cwd=cwd, timeout=COMMAND_TIMEOUT)
+        result = subprocess.run(command, cwd=cwd, timeout=COMMAND_TIMEOUT, env=env)
     except subprocess.TimeoutExpired:
         fail(name, f"timed out after {COMMAND_TIMEOUT}s")
     except OSError as exc:
@@ -64,14 +77,15 @@ def run(name: str, command: list[str], cwd: Path = ROOT, *,
     return 0
 
 
-def output(command: list[str], cwd: Path = ROOT) -> str:
+def output(command: list[str], cwd: Path = ROOT,
+           env: dict[str, str] | None = None, label: str = "git") -> str:
     try:
         result = subprocess.run(command, cwd=cwd, text=True, capture_output=True,
-                                timeout=120)
+                                timeout=120, env=env)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        fail("git", str(exc))
+        fail(label, str(exc))
     if result.returncode != 0:
-        fail("git", result.stderr.strip() or f"exit {result.returncode}")
+        fail(label, result.stderr.strip() or f"exit {result.returncode}")
     return result.stdout.strip()
 
 
@@ -150,11 +164,22 @@ def main() -> int:
 
     if not NODE:
         fail("node", "not found on PATH")
-    if not NPX:
-        fail("npx", "not found on PATH")
+    if not WRANGLER:
+        fail("wrangler", f"not found on PATH; install wrangler@{WRANGLER_VERSION}")
 
     branch, head = clean_tree()
     SCRATCH.mkdir(parents=True, exist_ok=True)
+    DEPLOY_ROOT.mkdir(parents=True, exist_ok=True)
+    DEPLOY_LOG.mkdir(parents=True, exist_ok=True)
+    DEPLOY_CACHE.mkdir(parents=True, exist_ok=True)
+    (DEPLOY_ROOT / "package.json").write_text("{}\n", encoding="utf-8")
+
+    version_text = output([WRANGLER, "--version"], cwd=DEPLOY_ROOT,
+                          env=deploy_env(), label="wrangler")
+    version = re.search(r"(\d+\.\d+\.\d+)", version_text)
+    if not version or version.group(1) != WRANGLER_VERSION:
+        fail("wrangler", f"expected {WRANGLER_VERSION}, found {version_text or 'nothing'}")
+    print(f"[ok] wrangler {WRANGLER_VERSION}")
 
     for name, command in (
         ("syntax", [NODE, "--check", "cinemelb/web/app.js"]),
@@ -190,15 +215,18 @@ def main() -> int:
         fail("push", f"origin/{branch} is {remote_head[:12] or 'missing'}, expected {head[:12]}")
     print(f"[ok] origin/{branch} is {head[:12]}")
 
-    deploy = [NPX, "--yes", WRANGLER, "pages", "deploy", "dist",
+    # Wrangler writes logs, its Pages temp dir and its cache under the user's
+    # home by default; this sandbox denies those writes to Python children.
+    # scratch/ is writable, so the deploy runs from a scratch package root with
+    # log/cache overrides. One bounded retry separates a transient lock from a
+    # real deploy failure.
+    deploy = [WRANGLER, "pages", "deploy", str(ROOT / "dist"),
               "--project-name", PROJECT, "--branch", PAGES_BRANCH]
-    code = run("deploy", deploy, soft=True)
+    env = deploy_env()
+    code = run("deploy", deploy, cwd=DEPLOY_ROOT, env=env, soft=True)
     if code != 0:
-        # Windows scanners/ACLs intermittently refuse wrangler's
-        # ~/.wrangler/tmp directory. One bounded retry separates a transient
-        # lock from a real deploy failure; a second failure stops the release.
         print("[warn] deploy failed; retrying once")
-        run("deploy retry", deploy)
+        run("deploy retry", deploy, cwd=DEPLOY_ROOT, env=env)
 
     expected = set(ASSET_RE.findall((ROOT / "dist" / "index.html").read_text(encoding="utf-8")))
     if len(expected) < 2:
