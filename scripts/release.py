@@ -190,8 +190,15 @@ def main() -> int:
         fail("push", f"origin/{branch} is {remote_head[:12] or 'missing'}, expected {head[:12]}")
     print(f"[ok] origin/{branch} is {head[:12]}")
 
-    run("deploy", [NPX, "--yes", WRANGLER, "pages", "deploy", "dist",
-                   "--project-name", PROJECT, "--branch", PAGES_BRANCH])
+    deploy = [NPX, "--yes", WRANGLER, "pages", "deploy", "dist",
+              "--project-name", PROJECT, "--branch", PAGES_BRANCH]
+    code = run("deploy", deploy, soft=True)
+    if code != 0:
+        # Windows scanners/ACLs intermittently refuse wrangler's
+        # ~/.wrangler/tmp directory. One bounded retry separates a transient
+        # lock from a real deploy failure; a second failure stops the release.
+        print("[warn] deploy failed; retrying once")
+        run("deploy retry", deploy)
 
     expected = set(ASSET_RE.findall((ROOT / "dist" / "index.html").read_text(encoding="utf-8")))
     if len(expected) < 2:
