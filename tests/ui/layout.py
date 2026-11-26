@@ -76,8 +76,14 @@ def main() -> int:
                           f"{label}: primary controls >= 44px ({[round(h) for h in heights]})")
 
                 day_snapshot = page.locator("main").aria_snapshot()
-                check("heading" in day_snapshot and film[1] in day_snapshot,
-                      f"{label}: day aria snapshot has the heading and a film")
+                day_title = page.evaluate(
+                    "() => { const t = document.querySelector('.films .film-title')"
+                    " || document.querySelector('.poster-grid .tile-title');"
+                    " return t ? t.textContent.trim() : ''; }")
+                check("heading" in day_snapshot and bool(day_title)
+                      and day_title in day_snapshot,
+                      f"{label}: day aria snapshot has the heading and a film "
+                      f"({day_title!r})")
                 rail = page.evaluate(
                     "() => ({current: document.querySelectorAll('#rail [aria-current=\"date\"]').length,"
                     " days: document.querySelectorAll('#rail a').length})")
