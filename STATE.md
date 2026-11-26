@@ -238,6 +238,13 @@ otherwise). The old
 `display:none` on phone time pills is gone. `app.js` moved to 27.0 KB gz, so the
 JS cap is 28 KB gz (D-024), still 4% headroom; bundle/CSS/HTML caps unchanged.
 
+Phase 13 is committed as `4ecbf5d` and pushed to `origin/master`; the full
+`release.py` ladder (syntax, tokens, contrast, manifest, bundle, budget,
+security, unit and all five Playwright suites) is green. The Cloudflare deploy
+step stopped because this shell has no `CLOUDFLARE_API_TOKEN`, so the live alias
+may still serve the previous build. Rerun `uv run python scripts/release.py`
+with the token exported, or deploy `dist` with the pinned wrangler command.
+
 iOS was handled explicitly after it "did nothing" in testing: the top-left brand
 mark was a circle with crosshair ticks, which read as a second locate button and
 swallowed taps (it is a film-strip now, and the locate control is a map pin);
