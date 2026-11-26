@@ -178,6 +178,17 @@ a:hover { color: var(--accent); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .sug-meta { display: block; font-size: 12px; color: var(--text-3); }
+.sug-all {
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+}
+.sug-all:hover, .sug-all[aria-selected="true"] { background: var(--card-2); }
+.sug-all .sug-title { color: var(--accent-2); font-weight: 600; }
+.sug-all-icon {
+  flex: 0 0 auto; width: 34px; height: 50px;
+  display: grid; place-items: center; color: var(--accent);
+}
+.sug-all-icon svg { width: 20px; height: 20px; }
 .sug-empty { padding: 14px; font-size: 13.5px; color: var(--text-3); text-align: center; }
 
 /* -------------------------------------------------------------- day rail */
@@ -219,6 +230,8 @@ a:hover { color: var(--accent); }
   padding: 8px 16px 0;
   display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
 }
+/* The author display rule beats the UA [hidden] default. */
+.filters[hidden], .nearbar[hidden] { display: none; }
 
 .chip {
   height: 32px; padding: 0 12px;
@@ -274,6 +287,22 @@ a:hover { color: var(--accent); }
   letter-spacing: .06em; color: var(--text-3);
 }
 .select-sort { max-width: 10.5rem; }
+
+/* One icon button that flips between the list and the poster grid. It shows
+   the action ("grid") while the list is active and vice versa. */
+.layout-btn {
+  flex: 0 0 auto;
+  width: 34px; height: 32px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+  background: var(--panel); color: var(--text-2);
+  cursor: pointer; padding: 0;
+}
+.layout-btn:hover { border-color: var(--line-2); color: var(--text); }
+.layout-btn.is-on {
+  background: var(--accent-dim); border-color: var(--accent); color: var(--accent-2);
+}
+.layout-btn svg { width: 17px; height: 17px; }
 .seg-btn {
   flex: 1 1 auto; height: 32px; padding: 0 12px;
   border: 0; background: none; color: var(--text-3);
@@ -366,6 +395,8 @@ a:hover { color: var(--accent); }
   margin: 0 0 12px;
 }
 .day-head h1 { margin: 0; font-size: 21px; font-weight: 680; letter-spacing: -.02em; }
+.search-head h1 { max-width: 46ch; overflow-wrap: anywhere; }
+.search-head .view-row { width: auto; max-width: none; margin-left: auto; }
 
 .badge {
   font-size: 11px; font-weight: 620; text-transform: uppercase; letter-spacing: .06em;
@@ -377,6 +408,43 @@ a:hover { color: var(--accent); }
 /* ------------------------------------------------------------- film cards */
 
 .films { display: grid; gap: 9px; }
+
+/* ------------------------------------------------------------ poster grid */
+/* The browsing view: a poster per film, with the same scores and a next-time
+   line. Tiles are links into the film page, so the whole cover is the target. */
+
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+  gap: 16px 12px;
+}
+.tile {
+  display: flex; flex-direction: column; gap: 7px;
+  min-width: 0; text-decoration: none; color: var(--text);
+  border-radius: 10px;
+  -webkit-tap-highlight-color: transparent;
+}
+.tile .tile-poster {
+  width: 100%; height: auto; aspect-ratio: 2 / 3;
+  flex: none; border-radius: 10px;
+}
+.tile:hover .tile-poster { border-color: var(--line-2); }
+.tile:hover .tile-title { color: var(--accent-2); }
+.tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.tile-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tile-title {
+  font-size: 13px; font-weight: 600; line-height: 1.25; letter-spacing: -.005em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.tile-scores { font-size: 11px; line-height: 1.3; }
+.tile-meta {
+  font-size: 11px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: normal;
+}
+.poster-grid .tile .poster-fallback { font-size: 22px; }
 
 .film {
   border: 1px solid var(--line); border-radius: var(--radius);
@@ -715,6 +783,13 @@ a.session:hover .notes { color: var(--text-2); }
   .view-row .view-bar { flex: 1 1 auto; }
   .sort-label { display: none; }
   .select-sort { max-width: 9.5rem; }
+  .layout-btn { width: 36px; height: 36px; }
+  .poster-grid { grid-template-columns: repeat(3, 1fr); gap: 14px 8px; }
+  .tile-title { font-size: 12px; }
+  .tile-scores, .tile-meta { font-size: 10.5px; }
+  .tile-cinemas { display: none; }
+  .poster-grid .tile .poster-fallback { font-size: 18px; }
+  .search-head h1 { font-size: 18px; }
   .seg-btn { height: 38px; font-size: 13.5px; }
   .film-hero { gap: 12px; }
   .film-hero h1 { font-size: 20px; }

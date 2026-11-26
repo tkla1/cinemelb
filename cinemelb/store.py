@@ -158,14 +158,27 @@ class Store:
     def upsert_films(self, films: Iterable[Film]) -> int:
         import json
 
-        rows = [
-            (
-                f.key, f.title, f.year, f.runtime_minutes, f.rating,
-                json.dumps(f.genres), f.synopsis, f.poster_url, f.trailer_url,
-                json.dumps(f.directors), json.dumps(f.aka),
+        from .models import film_key
+        from .titles import display_title
+
+        rows = []
+        for f in films:
+            # Strip the listing's programme prefix from both the key and the
+            # title, but keep the published string in `aka`. "BFF26 Parky" and
+            # "Parky" are then one catalogue film with one set of scores and
+            # one cover. If an adapter supplied a hand-built key, leave it be.
+            title = display_title(f.title)
+            key = film_key(title) if f.key == film_key(f.title) else f.key
+            aka = [str(item) for item in f.aka if item]
+            if title != f.title and f.title not in aka:
+                aka.insert(0, f.title)
+            rows.append(
+                (
+                    key, title, f.year, f.runtime_minutes, f.rating,
+                    json.dumps(f.genres), f.synopsis, f.poster_url, f.trailer_url,
+                    json.dumps(f.directors), json.dumps(aka),
+                )
             )
-            for f in films
-        ]
         with self.transaction() as conn:
             conn.executemany(
                 """
@@ -201,6 +214,104 @@ class Store:
                 rows,
             )
         return len(rows)
+
+    def normalise_films(self) -> dict[str, int]:
+        """Rewrite existing rows after a display-title rule change.
+
+        The store is a cache of scrapes, but it is a *persistent* one: a rule
+        that strips "BFF26" changes the key of rows that are already on disk.
+        Re-scraping would fix them eventually; this makes the catalogue correct
+        immediately, and is idempotent. Screenings follow their film, and two
+        prefixed spellings that collapse to one key are merged.
+        """
+        import json
+
+        from .models import film_key
+        from .titles import display_title
+
+        def _aka(row) -> list[str]:
+            try:
+                value = json.loads(row["aka"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                return []
+            return [str(item) for item in value if item]
+
+        stats = {"renamed": 0, "merged": 0, "retitled": 0}
+        with self.transaction() as conn:
+            # On Windows a multi-row UPDATE can spill a statement journal; the
+            # default temp-file path is not always writable, which surfaced as
+            # a misleading SQLITE_CANTOPEN. The catalogue is small, so keep
+            # temp tables in memory for this migration.
+            conn.execute("PRAGMA temp_store=MEMORY")
+            rows = conn.execute("SELECT * FROM films").fetchall()
+            for row in rows:
+                old_key = row["key"]
+                raw = row["title"]
+                clean = display_title(raw)
+                if not clean:
+                    continue
+                new_key = film_key(clean)
+                aka = _aka(row)
+                if raw != clean and raw not in aka:
+                    aka.insert(0, raw)
+
+                if new_key == old_key:
+                    if clean != raw:
+                        conn.execute(
+                            "UPDATE films SET title=?, aka=? WHERE key=?",
+                            (clean, json.dumps(aka), old_key),
+                        )
+                        stats["retitled"] += 1
+                    continue
+
+                target = conn.execute(
+                    "SELECT * FROM films WHERE key=?", (new_key,)
+                ).fetchone()
+                if target is None:
+                    conn.execute(
+                        "UPDATE films SET key=?, title=?, aka=? WHERE key=?",
+                        (new_key, clean, json.dumps(aka), old_key),
+                    )
+                    conn.execute(
+                        "UPDATE screenings SET film_key=? WHERE film_key=?",
+                        (new_key, old_key),
+                    )
+                    stats["renamed"] += 1
+                    continue
+
+                # Merge into the row that already has the clean key.
+                target_aka = _aka(target)
+                for item in [raw, *aka]:
+                    if item and item not in target_aka:
+                        target_aka.append(item)
+                conn.execute(
+                    """
+                    UPDATE films SET
+                        year=COALESCE(year, ?),
+                        runtime_minutes=COALESCE(runtime_minutes, ?),
+                        rating=CASE WHEN rating IS NULL OR rating='' THEN ? ELSE rating END,
+                        genres=CASE WHEN genres IS NULL OR genres='[]' THEN ? ELSE genres END,
+                        synopsis=CASE WHEN synopsis IS NULL OR synopsis='' THEN ? ELSE synopsis END,
+                        poster_url=CASE WHEN poster_url IS NULL OR poster_url='' THEN ? ELSE poster_url END,
+                        trailer_url=CASE WHEN trailer_url IS NULL OR trailer_url='' THEN ? ELSE trailer_url END,
+                        directors=CASE WHEN directors IS NULL OR directors='[]' THEN ? ELSE directors END,
+                        aka=?
+                    WHERE key=?
+                    """,
+                    (
+                        row["year"], row["runtime_minutes"], row["rating"],
+                        row["genres"], row["synopsis"], row["poster_url"],
+                        row["trailer_url"], row["directors"],
+                        json.dumps(target_aka), new_key,
+                    ),
+                )
+                conn.execute(
+                    "UPDATE screenings SET film_key=? WHERE film_key=?",
+                    (new_key, old_key),
+                )
+                conn.execute("DELETE FROM films WHERE key=?", (old_key,))
+                stats["merged"] += 1
+        return stats
 
     def replace_screenings(self, cinema_id: str, screenings: Sequence[Screening]) -> int:
         """Replace every future screening for one cinema.

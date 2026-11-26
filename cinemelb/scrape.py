@@ -257,6 +257,9 @@ def refresh(
                 if progress:
                     progress(report.venues[-1])
 
+        # Titles can carry a listing's programme prefix ("BFF26 Parky"); fold
+        # those into the film's real title/key before pruning anything.
+        store.normalise_films()
         if prune:
             store.prune_before(datetime.now(MELBOURNE_TZ).date() - timedelta(days=1))
             # only safe once every venue has been revisited; a partial refresh

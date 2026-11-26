@@ -274,6 +274,22 @@ def refresh(
 
 
 @app.command()
+def normalise(ctx: typer.Context) -> None:
+    """Fold programme prefixes ("BFF26 …", "Astor: …") into the real film titles.
+
+    Idempotent. A full ``refresh`` runs this automatically; the command exists
+    so an existing database can be corrected without re-scraping.
+    """
+    store = _store(ctx)
+    stats = store.normalise_films()
+    films = len(store.films())
+    console.print(
+        f"[bold]Films[/bold] {films} · retitled {stats['retitled']} · "
+        f"renamed {stats['renamed']} · merged {stats['merged']}"
+    )
+
+
+@app.command()
 def film(
     ctx: typer.Context,
     title: str = typer.Argument(..., help="Film title (fuzzy)"),

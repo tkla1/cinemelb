@@ -145,6 +145,13 @@ python -m cinemelb stats                         # what's in the database
 python -m cinemelb doctor                        # adapter coverage
 ```
 
+`normalise` repairs an existing catalogue after a title rule changes: it folds
+listing programme prefixes (`BFF26 Parky`, `JIFF: …`, `Cult Classix: …`,
+`Astor: …`) into the film's real title and key, keeps the published string in
+`aka`, and moves screenings onto the merged key. A full `refresh` runs it
+automatically; the command exists so a database can be corrected without
+re-scraping.
+
 ### `serve` — a read-only web page
 
 ```bash
@@ -213,6 +220,15 @@ schedule), *Top rated*, *Title A–Z*, and *Nearest* once a location is set. Top
 rated averages whichever scores a film has, normalised to 0–1, so a film with
 only a Metascore still ranks sensibly; unrated films sort last. The choice is
 remembered too.
+
+**Poster grid and search.** A layout button beside Sort flips the day between
+the list and a responsive poster grid: three columns on a phone, up to eight on
+desktop. Each tile carries the cover, its scores and the next session, and opens
+the film page; grid/list is remembered with the grouping. Enter in the header
+search now opens a full results page (`#/search/<query>`) instead of jumping to
+the first title: every match becomes a poster tile, ranked by match, with
+**Best match / Top rated / Title A–Z** sorting. The dropdown remains a six-item
+shortcut and ends with a **See all N results** row into the same grid.
 
 The time-of-day sections collapse: click a heading to fold that part of the day
 away, which makes "what is on after work" readable without scrolling past the
@@ -462,7 +478,10 @@ cinema for a session that does not exist.
   at Village and "Disney's Hexed" at Palace/Moving Story. Queries resolve one
   title string per film; pass `--fuzzy` to widen a search when a title looks
   fragmented. Curly-vs-straight apostrophes and en-dashes are normalised to one
-  key, so "Disney’s Hexed" and "Disney's Hexed" already collapse.
+  key, so "Disney’s Hexed" and "Disney's Hexed" already collapse. Listing
+  programme prefixes ("BFF26 Parky", "JIFF: …", "Cult Classix: …", "Astor: …")
+  are stripped before the key is built, with the published title kept in `aka`,
+  so a festival screening groups with the same film showing elsewhere.
 - **Upstream sites change.** These are scrapers against undocumented endpoints;
   a redesign breaks an adapter. `cinemelb doctor` and `python scripts/verify.py`
   exist to make that failure loud rather than silent.

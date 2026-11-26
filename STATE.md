@@ -21,7 +21,7 @@ for each, and expose a tool that answers:
 | Coverage window | 25 Nov 2026 – 31 Jul 2027 |
 | Working adapters | hoyts, village, palace, reading, movingstory, nova, sun, acmi, imax, indy, lumos, waverley, generic_html |
 | Missing adapters | none |
-| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,ratings,posters,serve,export}` |
+| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,normalise,map,ratings,posters,serve,export}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
 | Static site | **https://cinemelb.pages.dev** — `python -m cinemelb export` → Cloudflare Pages |
 | Tests | 45 pass (1 skipped); `python -m unittest discover -s tests` |
@@ -124,6 +124,29 @@ Title A–Z / Nearest (the last only with a place set); Top rated averages the
 available scores normalised to 0–1, unrated films last. Both the sort and the
 grouping are persisted in `localStorage`. Metascore `0` (Metacritic's "no
 reviews yet" sentinel) is dropped at export, so no card shows a bogus `MC 0`.
+
+**Poster grid + full search (26 Nov, second follow-up).** The day listing has a
+layout toggle beside Sort: the list, or a responsive poster grid (3 columns on
+a phone, up to 8 on desktop). Tiles carry the cover, scores and next session;
+the whole tile links to the film page. Grid/list is stored with the grouping in
+`cinemelb-view`. Pressing Enter in the header search now routes to
+`#/search/<query>` — a full results page with every match as poster tiles,
+Best match / Top rated / Title A–Z sorting, and the day filters and location
+bar hidden (they describe sessions, not films). The header dropdown stays a
+six-item shortcut and adds a **See all N results** row. Search-result tiles
+show the date when the next session is not today; on phones the cinema count is
+dropped so the next time fits.
+
+**Title hygiene (26 Nov).** Listings inject the programme into the film title:
+`BFF26 Parky`, `JIFF: Paper Tiger`, `Cult Classix: Suspiria (4k)`,
+`Astor: The Last Waltz`, `CASFFA: …`, `Jodofest: …`. Those prefixes split one
+film from its screenings elsewhere and broke scores/covers, which are keyed by
+title. `cinemelb/titles.py` strips the programme/venue prefix before the key is
+built, keeps the published string in `aka`, and `Store.normalise_films()` (run
+by every `refresh`, or manually via `cinemelb normalise`) renames and merges
+existing rows and moves their screenings. Result: 45 prefixed titles cleaned,
+390 films after 3 merges, 0 orphans, 0 duplicates, and the ratings cache still
+resolves because its keys were already prefix-free.
 
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.

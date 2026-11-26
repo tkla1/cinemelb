@@ -118,7 +118,11 @@ def normalise_title(title: str) -> str:
 
 
 def film_key(title: str, year: int | None = None) -> str:
-    key = slugify(normalise_title(title))
+    # Programme prefixes ("BFF26 Parky", "Astor: ...") are listing furniture,
+    # not part of the film's identity; fold them out before the key is built.
+    from .titles import display_title
+
+    key = slugify(normalise_title(display_title(title)))
     if year:
         key = f"{key}-{year}"
     return key or "unknown"

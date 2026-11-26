@@ -65,6 +65,13 @@
     ['title', 'Title A–Z'],
     ['near', 'Nearest']
   ];
+  // Search results are ranked by match first; the other two are deliberate
+  // re-orderings of the full result set.
+  var SEARCH_SORTS = [
+    ['relevance', 'Best match'],
+    ['rating', 'Top rated'],
+    ['title', 'Title A–Z']
+  ];
 
   // ------------------------------------------------------------------- state
   var S = {
@@ -83,8 +90,10 @@
     filmGroup: 'day',    // film view: 'day' | 'cinema' | 'time'
     sort: 'soonest',    // day view: 'soonest' | 'rating' | 'title' | 'near'
     sortSaved: false,   // has the user chosen a sort explicitly?
+    layout: 'list',    // day view: 'list' | 'grid' (grid = poster tiles)
+    searchSort: 'relevance',  // search view: 'relevance' | 'rating' | 'title'
     place: null,       // { name, lat, lon, source } once a location is set
-    route: { name: 'day', date: null, film: null },
+    route: { name: 'day', date: null, film: null, q: null },
     chains: []
   };
 
@@ -701,19 +710,31 @@
     S.route = route;
     renderRail();
     renderFilters();
+    // The search page is about films, not sessions; the session filters and
+    // the location bar would imply they narrow the results.
+    var onSearch = route.name === 'search';
+    var filters = document.getElementById('filters');
+    if (filters) filters.hidden = onSearch;
+    var nearbar = document.getElementById('nearbar');
+    if (nearbar) nearbar.hidden = onSearch;
     if (route.name === 'film') renderFilm(main, route.film);
+    else if (route.name === 'search') renderSearch(main, route.q);
     else renderDay(main, route.date);
   }
 
   function parseRoute() {
     var h = location.hash.replace(/^#/, '');
     if (h.indexOf('/film/') === 0) {
-      return { name: 'film', film: decodeURIComponent(h.slice(6)), date: null };
+      return { name: 'film', film: decodeURIComponent(h.slice(6)), date: null, q: null };
+    }
+    if (h.indexOf('/search/') === 0) {
+      return { name: 'search', film: null, date: null,
+               q: decodeURIComponent(h.slice(8)) };
     }
     if (h.indexOf('/day/') === 0) {
-      return { name: 'day', date: h.slice(5), film: null };
+      return { name: 'day', date: h.slice(5), film: null, q: null };
     }
-    return { name: 'day', date: null, film: null };
+    return { name: 'day', date: null, film: null, q: null };
   }
 
   function renderRail() {
@@ -810,8 +831,44 @@
         '" aria-pressed="' + on + '">' + esc(options[i][1]) + '</button>';
     }
     html += '</div>';
-    if (kind === 'day') html = '<div class="view-row">' + html + sortSelect() + '</div>';
+    if (kind === 'day') {
+      html = '<div class="view-row">' + html + sortSelect() +
+        (S.group === 'film' ? layoutToggle() : '') + '</div>';
+    }
     return html;
+  }
+
+  function layoutToggle() {
+    var grid = S.layout === 'grid';
+    var label = grid ? 'Switch to list view' : 'Switch to poster grid';
+    // Show the action, not the current state: a grid icon means "go to grid".
+    var icon = grid
+      ? '<path d="M4 5h12M4 10h12M4 15h12" fill="none" stroke="currentColor"' +
+        ' stroke-width="1.8" stroke-linecap="round"/>'
+      : '<rect x="3.5" y="4" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="11" y="4" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="3.5" y="11" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="11" y="11" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>';
+    return '<button type="button" class="layout-btn' + (grid ? ' is-on' : '') +
+      '" data-layout-toggle aria-pressed="' + grid + '" title="' + label +
+      '" aria-label="' + label + '">' +
+      '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">' +
+      icon + '</svg></button>';
+  }
+
+  function searchSortSelect() {
+    var html = '<label class="sort-wrap"><span class="sort-label">Sort</span>' +
+      '<select id="search-sort" class="select select-sort" aria-label="Sort search results">';
+    for (var i = 0; i < SEARCH_SORTS.length; i++) {
+      html += '<option value="' + SEARCH_SORTS[i][0] + '"' +
+        (SEARCH_SORTS[i][0] === S.searchSort ? ' selected' : '') + '>' +
+        esc(SEARCH_SORTS[i][1]) + '</option>';
+    }
+    return html + '</select></label>';
   }
 
   function sortSelect() {
@@ -884,9 +941,65 @@
     var html = head;
     if (S.group === 'cinema') html += dayByCinema(rows);
     else if (S.group === 'time') html += dayByTime(rows);
+    else if (S.layout === 'grid') html += dayByFilmGrid(rows);
     else html += dayByFilm(rows);
     main.innerHTML = html;
     document.title = shortDay(dayIso) + ' — cinemelb';
+  }
+
+  /* The full search page: every match as a poster tile, not just the six in
+     the header dropdown. Relevance is the default order; the sort applies to
+     the whole result set. */
+  function renderSearch(main, query) {
+    var q = String(query || '').trim();
+    var lower = q.toLowerCase();
+    var input = document.getElementById('q');
+    if (input && input.value.trim().toLowerCase() !== lower) input.value = q;
+
+    if (!lower) {
+      main.innerHTML = '<div class="empty"><h2>Search films</h2>' +
+        '<p>Type a title in the search box above, or <a href="#/">browse today</a>.</p></div>';
+      document.title = 'Search — cinemelb';
+      return;
+    }
+
+    var results = searchMatches(lower, 2000);
+    var head = '<div class="day-head search-head">' +
+      '<h1>Results for \u201c' + esc(q) + '\u201d</h1>' +
+      '<span class="count">' + results.length + ' film' +
+      (results.length === 1 ? '' : 's') + '</span>' +
+      (results.length ? '<div class="view-row">' + searchSortSelect() + '</div>' : '') +
+      '</div>';
+
+    if (!results.length) {
+      main.innerHTML = head + '<div class="empty"><h2>No films match \u201c' +
+        esc(q) + '\u201d</h2><p>Try a shorter title, or ' +
+        '<a href="#/">browse what is on today</a>.</p></div>';
+      document.title = 'Search: ' + q + ' — cinemelb';
+      return;
+    }
+
+    var list = results.slice();
+    if (S.searchSort === 'rating') {
+      list.sort(function (a, b) {
+        var ra = filmRating(S.films[a.i]);
+        var rb = filmRating(S.films[b.i]);
+        if (ra === null) ra = -1;
+        if (rb === null) rb = -1;
+        return rb - ra || a.title.localeCompare(b.title);
+      });
+    } else if (S.searchSort === 'title') {
+      list.sort(function (a, b) { return a.title.localeCompare(b.title); });
+    }
+
+    var html = head + '<div class="poster-grid">';
+    for (var i = 0; i < list.length; i++) {
+      var idx = list[i].i;
+      html += filmTile(idx, S.byFilm.get(idx) || [], false);
+    }
+    html += '</div>';
+    main.innerHTML = html;
+    document.title = 'Search: ' + q + ' — cinemelb';
   }
 
   function groupByFilm(rows) {
@@ -980,6 +1093,81 @@
       html += filmCard(order[k], groups.get(order[k]));
     }
     return html + '</div>';
+  }
+
+  /* The grid is the browsing view: one poster per film, same ordering as the
+     list, and the tile is the link into the film's page. */
+  function dayByFilmGrid(rows) {
+    var groups = groupByFilm(rows);
+    var order = orderFilms(groups);
+    var html = '<div class="poster-grid">';
+    for (var k = 0; k < order.length; k++) {
+      html += filmTile(order[k], groups.get(order[k]), true);
+    }
+    return html + '</div>';
+  }
+
+  function cinemaCountOf(rows) {
+    var seen = Object.create(null);
+    var n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var c = S.rowCinema[rows[i]];
+      if (!seen[c]) { seen[c] = 1; n++; }
+    }
+    return n;
+  }
+
+  function earliestOf(rows) {
+    var best = null;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      if (isPast(r)) continue;
+      if (best === null ||
+          S.rowDate[r] < S.rowDate[best] ||
+          (S.rowDate[r] === S.rowDate[best] && S.rowMinute[r] < S.rowMinute[best])) {
+        best = r;
+      }
+    }
+    return best;
+  }
+
+  function nextTimeLabel(row, sameDay) {
+    if (!row) return 'No upcoming sessions';
+    if (sameDay) return 'from ' + clock(S.rowMinute[row]);
+    var iso = S.bundle.dates[S.rowDate[row]];
+    var rel = relative(iso);
+    if (rel === 'Today') return 'from ' + clock(S.rowMinute[row]);
+    if (rel === 'Tomorrow') return 'tomorrow ' + clock(S.rowMinute[row]);
+    return coverDay(iso) + ' ' + clock(S.rowMinute[row]);
+  }
+
+  function filmTile(filmIdx, rows, sameDay) {
+    var film = S.films[filmIdx];
+    var upcoming = [];
+    for (var i = 0; i < rows.length; i++) {
+      if (!isPast(rows[i])) upcoming.push(rows[i]);
+    }
+    var soon = earliestOf(upcoming);
+    var n = cinemaCountOf(upcoming);
+    var meta;
+    if (soon) {
+      meta = '<span class="tile-cinemas">' + n + (n === 1 ? ' cinema · ' : ' cinemas · ') +
+        '</span><span class="tile-when">' + esc(nextTimeLabel(soon, sameDay)) +
+        '</span>';
+    } else {
+      meta = '<span class="tile-when">No upcoming sessions</span>';
+    }
+    var bits = scoreBits(film);
+    return '<a class="tile" href="#/film/' + encodeURIComponent(film[0]) + '">' +
+      posterTile(film, 'tile-poster') +
+      '<span class="tile-body">' +
+        '<span class="tile-title">' + esc(film[1]) + '</span>' +
+        (bits.length
+          ? '<span class="tile-scores">' + bits.join(' <span class="msep">·</span> ') +
+            '</span>'
+          : '') +
+        '<span class="tile-meta">' + meta + '</span>' +
+      '</span></a>';
   }
 
   /* A day holds ~1,900 sessions, so "by cinema" collapses each venue into one
@@ -1196,7 +1384,7 @@
 
   /* Scores lead the card's meta line so "Top rated" has something to show for
      itself without expanding the card. No score means no chip, never a dash. */
-  function metaLine(film, meta) {
+  function scoreBits(film) {
     var bits = [];
     if (film[10] > 0) {
       bits.push('<span class="mscore ms-imdb">IMDb ' + film[10].toFixed(1) + '</span>');
@@ -1207,6 +1395,11 @@
     if (film[12] > 0) {
       bits.push('<span class="mscore ms-mc">MC ' + film[12] + '</span>');
     }
+    return bits;
+  }
+
+  function metaLine(film, meta) {
+    var bits = scoreBits(film);
     var sep = ' <span class="msep">\u00b7</span> ';
     var html = bits.join(sep);
     if (meta) html += (html ? sep : '') + '<span class="mrest">' + esc(meta) + '</span>';
@@ -1569,7 +1762,7 @@
   /* Title search, ranked the way a person types: exact, then a prefix, then a
      word start, then anywhere. Films come back in the bundle's own order for
      equal scores, so the list is stable between keystrokes. */
-  function searchMatches(q) {
+  function searchMatches(q, limit) {
     var out = [];
     for (var i = 0; i < S.films.length; i++) {
       var title = S.films[i][1];
@@ -1585,7 +1778,7 @@
     out.sort(function (a, b) {
       return b.score - a.score || a.title.localeCompare(b.title);
     });
-    return out.slice(0, 6);
+    return out.slice(0, limit || 6);
   }
 
   function closeSuggest() {
@@ -1603,12 +1796,15 @@
     var box = document.getElementById('suggest');
     var input = document.getElementById('q');
     if (!box || !input) return;
-    if (!q) { closeSuggest(); return; }
-    var list = searchMatches(q);
+    var raw = String(q || '').trim();
+    var key = raw.toLowerCase();
+    if (!key) { closeSuggest(); return; }
+    var all = searchMatches(key, 2000);
+    var list = all.slice(0, 6);
     sugIndex = -1;
     input.removeAttribute('aria-activedescendant');
-    if (!list.length) {
-      box.innerHTML = '<div class="sug-empty">No films match \u201c' + esc(q) + '\u201d</div>';
+    if (!all.length) {
+      box.innerHTML = '<div class="sug-empty">No films match \u201c' + esc(raw) + '\u201d</div>';
       box.hidden = false;
       input.setAttribute('aria-expanded', 'true');
       return;
@@ -1632,6 +1828,25 @@
           (meta.length ? '<span class="sug-meta">' + esc(meta.join(' \u00b7 ')) + '</span>' : '') +
         '</span></button>';
     }
+    // Always offer the full grid, even when the six quick hits contain what
+    // the user wants: the dropdown is a shortcut, the search page is the view.
+    html += '<button type="button" class="sug sug-all" role="option" id="sug-' + list.length +
+      '" aria-selected="false" data-search-all="' + esc(raw) + '">' +
+      '<span class="sug-all-icon" aria-hidden="true">' +
+        '<svg viewBox="0 0 20 20" focusable="false">' +
+        '<rect x="3" y="3" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="11.5" y="3" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="3" y="11.5" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/>' +
+        '<rect x="11.5" y="11.5" width="5.5" height="5.5" rx="1" fill="none"' +
+        ' stroke="currentColor" stroke-width="1.6"/></svg></span>' +
+      '<span class="sug-body">' +
+        '<span class="sug-title">See all ' + all.length + ' result' +
+        (all.length === 1 ? '' : 's') + '</span>' +
+        '<span class="sug-meta">Open the poster grid for \u201c' + esc(raw) + '\u201d</span>' +
+      '</span></button>';
     box.innerHTML = html;
     box.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -1660,18 +1875,30 @@
     location.hash = '#/film/' + encodeURIComponent(key);
   }
 
+  function goSearch(q) {
+    var text = String(q || '').trim();
+    if (!text) return;
+    var input = document.getElementById('q');
+    if (input) input.value = text;
+    closeSuggest();
+    var hash = '#/search/' + encodeURIComponent(text);
+    if (location.hash === hash) render();
+    else location.hash = hash;
+  }
+
   function submitSearch() {
     var input = document.getElementById('q');
-    var q = input ? input.value.trim().toLowerCase() : '';
+    var q = input ? input.value.trim() : '';
     if (!q) return;
     var box = document.getElementById('suggest');
     var items = box && sugIndex >= 0 ? box.querySelectorAll('.sug') : null;
     if (items && items[sugIndex]) {
-      openFilm(items[sugIndex].getAttribute('data-key'));
-      return;
+      // A highlighted suggestion is a direct shortcut; the "see all" row and
+      // plain Enter both open the full grid.
+      var key = items[sugIndex].getAttribute('data-key');
+      if (key) { openFilm(key); return; }
     }
-    var list = searchMatches(q);
-    if (list.length) openFilm(S.films[list[0].i][0]);
+    goSearch(q);
   }
 
   /* Chips toggle on click; selects only react to change. Handling a select on
@@ -1705,17 +1932,40 @@
   }
 
   function onSort(event) {
-    if (event.target.id !== 'sort') return;
-    S.sort = event.target.value;
-    S.sortSaved = true;
-    try { localStorage.setItem('cinemelb-sort', S.sort); } catch (e) { /* private mode */ }
+    var id = event.target.id;
+    if (id === 'sort') {
+      S.sort = event.target.value;
+      S.sortSaved = true;
+      try { localStorage.setItem('cinemelb-sort', S.sort); } catch (e) { /* private mode */ }
+    } else if (id === 'search-sort') {
+      S.searchSort = event.target.value;
+      saveView();
+    } else {
+      return;
+    }
+    render();
+  }
+
+  function onLayout(event) {
+    var btn = event.target.closest('[data-layout-toggle]');
+    if (!btn) return;
+    S.layout = S.layout === 'grid' ? 'list' : 'grid';
+    // The grid is a film-card layout, so switching to it also selects that
+    // grouping rather than showing a grid button over a cinema list.
+    if (S.layout === 'grid') S.group = 'film';
+    saveView();
     render();
   }
 
   function saveView() {
     try {
       localStorage.setItem('cinemelb-view',
-        JSON.stringify({ group: S.group, filmGroup: S.filmGroup }));
+        JSON.stringify({
+          group: S.group,
+          filmGroup: S.filmGroup,
+          layout: S.layout,
+          searchSort: S.searchSort
+        }));
     } catch (e) { /* private mode */ }
   }
 
@@ -1755,6 +2005,10 @@
       if (savedView) {
         if (savedView.group) S.group = savedView.group;
         if (savedView.filmGroup) S.filmGroup = savedView.filmGroup;
+        if (savedView.layout === 'grid' || savedView.layout === 'list') {
+          S.layout = savedView.layout;
+        }
+        if (savedView.searchSort) S.searchSort = savedView.searchSort;
       }
       var savedSort = localStorage.getItem('cinemelb-sort');
       if (savedSort) { S.sort = savedSort; S.sortSaved = true; }
@@ -1776,7 +2030,7 @@
 
     input.addEventListener('input', function () {
       if (!S.bundle) return;
-      renderSuggest(input.value.trim().toLowerCase());
+      renderSuggest(input.value.trim());
     });
 
     input.addEventListener('keydown', function (event) {
@@ -1798,6 +2052,8 @@
     });
 
     document.getElementById('suggest').addEventListener('click', function (event) {
+      var all = event.target.closest('[data-search-all]');
+      if (all) { goSearch(all.getAttribute('data-search-all')); return; }
       var sug = event.target.closest('.sug');
       if (sug) openFilm(sug.getAttribute('data-key'));
     });
@@ -1823,6 +2079,7 @@
     document.getElementById('filters').addEventListener('click', onChip);
     document.getElementById('filters').addEventListener('change', onSelect);
     document.getElementById('main').addEventListener('click', onView);
+    document.getElementById('main').addEventListener('click', onLayout);
     document.getElementById('main').addEventListener('change', onSort);
     document.getElementById('theme').addEventListener('click', onTheme);
     window.addEventListener('hashchange', function () {
