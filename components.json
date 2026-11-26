@@ -15,13 +15,32 @@
         {"name": "rows", "type": "int[]", "required": true, "description": "screening row indices"}
       ],
       "states": ["collapsed", "expanded", "soon", "overflow", "no-score", "long-title",
-                 "time-scoped"],
+                 "time-scoped", "few-times", "venue-named", "mobile-times"],
       "tokens": ["--card", "--line", "--radius", "--text", "--text-2", "--text-3",
                  "--accent", "--accent-dim", "--score-imdb", "--score-rt", "--score-mc",
                  "--focus-ring"],
       "a11y": {"element": "details/summary", "heading": "h2", "focusVisible": true,
                "keyboard": "native disclosure"},
       "examples": ["gallery/film-card--collapsed", "gallery/film-card--expanded"],
+      "since": "2026-11-26"
+    },
+    {
+      "id": "starting-soon",
+      "name": "Starting soon",
+      "status": "stable",
+      "source": "cinemelb/web/app.js",
+      "render": "window.CINEMELB.render.startingSoon",
+      "gallery": "cinemelb/web/gallery.html#starting-soon",
+      "props": [
+        {"name": "rows", "type": "int[]", "required": true},
+        {"name": "isToday", "type": "boolean", "required": true}
+      ],
+      "states": ["hidden-empty", "rows", "ticket-link", "no-url", "distance"],
+      "tokens": ["--panel", "--line", "--text", "--text-2", "--text-3",
+                 "--accent", "--accent-2", "--accent-dim", "--focus-ring"],
+      "a11y": {"element": "section/ol", "heading": "Starting soon",
+               "timeLink": "Tickets for <time> at <venue>, <day>"},
+      "examples": ["gallery/starting-soon--today"],
       "since": "2026-11-26"
     },
     {

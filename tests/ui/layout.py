@@ -5,11 +5,25 @@ Run: uv run python tests/ui/layout.py
 
 from __future__ import annotations
 
+import re
 import sys
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo
 
 from playwright.sync_api import sync_playwright
 
 from harness import check, load_bundle, report, serve
+
+
+def clock_minute(text: str) -> int:
+    """Parse the card's "7:20pm" into minutes past midnight."""
+    match = re.match(r"(\d{1,2})(?::(\d{2}))?(am|pm)$", text.strip(), re.I)
+    if not match:
+        return -1
+    hour = int(match.group(1)) % 12
+    if match.group(3).lower() == "pm":
+        hour += 12
+    return hour * 60 + int(match.group(2) or 0)
 
 
 CONTROLS_JS = r"""
@@ -248,6 +262,126 @@ def main() -> int:
             check(motion["probes"] <= 1,
                   f"no other infinite animation runs ({motion['probes']} found)")
             page.close()
+
+            # AC-045 / AC-046: today opens with catchable films, and the card's
+            # time pills stay visible at 390px. Pin a 7pm clock on tomorrow's
+            # bundle date so the window has a deterministic set of sessions.
+            fixed = datetime.combine(date.fromisoformat(bundle["dates"][1]),
+                                     time(19, 0),
+                                     tzinfo=ZoneInfo("Australia/Melbourne"))
+            soon_page = browser.new_page(viewport={"width": 390, "height": 844})
+            soon_page.clock.install(time=fixed)
+            soon_page.goto(base + "#/day/" + bundle["dates"][1],
+                           wait_until="networkidle")
+            soon_page.wait_for_selector(".films .film")
+            soon = soon_page.evaluate(
+                "() => ({head: document.querySelector('.soon-head h2')"
+                "   ?.textContent.trim() || '',"
+                "  label: document.querySelector('.soon-count')"
+                "   ?.textContent.trim() || '',"
+                "  rows: [...document.querySelectorAll('.soon-row')].map(r => ({"
+                "    time: r.querySelector('.soon-time .time')"
+                "      ?.textContent.trim() || '',"
+                "    title: r.querySelector('.soon-title')"
+                "      ?.textContent.trim() || '',"
+                "    meta: r.querySelector('.soon-meta')"
+                "      ?.textContent.trim() || '',"
+                "    href: r.querySelector('a.soon-time')"
+                "      ?.getAttribute('href') || '',"
+                "    target: r.querySelector('a.soon-time')"
+                "      ?.getAttribute('target') || '',"
+                "    rel: r.querySelector('a.soon-time')"
+                "      ?.getAttribute('rel') || '',"
+                "    label: r.querySelector('a.soon-time')"
+                "      ?.getAttribute('aria-label') || ''"
+                "  }))})")
+            check(soon["head"] == "Starting soon",
+                  f"today opens with a Starting soon heading ({soon['head']!r})")
+            check(1 <= len(soon["rows"]) <= 5,
+                  f"the module lists at most five films ({len(soon['rows'])})")
+            check("next 2 hours" in soon["label"],
+                  f"the module names its two-hour window ({soon['label']!r})")
+            check(all(r["time"] and r["title"] and r["meta"] for r in soon["rows"]),
+                  "every starting-soon row names time, film and venue")
+            shows = [clock_minute(r["time"]) for r in soon["rows"]]
+            check(all(19 * 60 + 20 <= m <= 21 * 60 for m in shows),
+                  f"every row starts within the catchable two hours ({shows})")
+            check(shows == sorted(shows),
+                  f"rows are ordered by start time without a place ({shows})")
+            tickets = [r for r in soon["rows"] if r["href"]]
+            check(bool(tickets) and all(
+                t["href"].startswith("https://") and t["target"] == "_blank"
+                and "noopener" in t["rel"] and t["label"].startswith("Tickets for ")
+                for t in tickets),
+                  f"starting-soon ticket links are safe and named ({len(tickets)})")
+            card_times = soon_page.evaluate(
+                "() => { const c = document.querySelector('.films .film');"
+                " const t = c ? c.querySelector('.film-times') : null;"
+                " return {display: t ? getComputedStyle(t).display : '',"
+                "  times: t ? t.querySelectorAll('.time').length : 0}; }")
+            check(card_times["display"] != "none" and card_times["times"] > 0,
+                  f"390px card shows its times ({card_times})")
+            soon_page.close()
+
+            # AC-047: a granted permission is used silently; a first-time
+            # visitor (permission still "prompt") is not asked on load.
+            geo_ctx = browser.new_context(
+                viewport={"width": 1280, "height": 800},
+                geolocation={"latitude": -37.8136, "longitude": 144.9631},
+                permissions=["geolocation"])
+            geo_page = geo_ctx.new_page()
+            geo_page.clock.install(time=fixed)
+            geo_page.goto(base, wait_until="networkidle")
+            geo_page.wait_for_selector(".films .film")
+            geo_page.wait_for_function(
+                "() => window.CINEMELB.state.place"
+                " && window.CINEMELB.state.place.source === 'geolocation'")
+            geo = geo_page.evaluate(
+                "() => ({source: window.CINEMELB.state.place.source,"
+                " name: window.CINEMELB.state.place.name,"
+                " stored: localStorage.getItem('cinemelb-place'),"
+                " dist: /(km|m) · ~\\d+ min/.test("
+                "   document.querySelector('.film-meta')?.textContent || ''),"
+                " soonDist: [...document.querySelectorAll('.soon-meta')]"
+                "   .every(e => /(km|m) · ~\\d+ min/.test(e.textContent)),"
+                " pressed: document.getElementById('near-me')"
+                "   ?.getAttribute('aria-pressed')})")
+            check(geo["source"] == "geolocation" and geo["name"] == "your location",
+                  f"granted permission sets the place silently ({geo['source']!r})")
+            check(geo["stored"] is None,
+                  "GPS coordinates are not written to localStorage")
+            check(geo["dist"], "cards show distance without a tap")
+            check(geo["soonDist"], "starting-soon rows show distance without a tap")
+            check(geo["pressed"] == "true", "the Near me control reflects the place")
+            geo_page.click("[data-near-clear]")
+            geo_page.wait_for_function("() => !window.CINEMELB.state.place")
+            cleared = geo_page.evaluate(
+                "() => ({flag: localStorage.getItem('cinemelb-nolocate'),"
+                " stored: localStorage.getItem('cinemelb-place')})")
+            check(cleared["flag"] == "1" and cleared["stored"] is None,
+                  f"Clear records the opt-out without storing a coordinate ({cleared})")
+            geo_page.reload(wait_until="networkidle")
+            geo_page.wait_for_selector(".films .film")
+            check(geo_page.evaluate("() => !window.CINEMELB.state.place"),
+                  "a cleared location is not silently reacquired on reload")
+            geo_ctx.close()
+
+            prompt_ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+            prompt_page = prompt_ctx.new_page()
+            prompt_page.add_init_script(
+                "window.__geoAsked = 0;"
+                "try { const g = navigator.geolocation;"
+                " const orig = g.getCurrentPosition.bind(g);"
+                " g.getCurrentPosition = function () { window.__geoAsked++;"
+                "  return orig.apply(g, arguments); }; } catch (e) {}")
+            prompt_page.clock.install(time=fixed)
+            prompt_page.goto(base, wait_until="networkidle")
+            prompt_page.wait_for_selector(".films .film")
+            asked = prompt_page.evaluate("() => window.__geoAsked")
+            check(asked == 0,
+                  f"a prompt-state visitor is not asked on load ({asked})")
+            prompt_ctx.close()
+
             browser.close()
     finally:
         server.shutdown()

@@ -197,7 +197,7 @@ actions, Time/Distance cinema sort). The structural gate is four Playwright
 scripts (`layout`, `states`, `search`, `film`) plus `alias`, all under
 `tests/ui/` and run with plain `uv run python` (Playwright is a dev dependency).
 They measure geometry, computed style, focus and ARIA at 320/390/1280 and never
-screenshot. Current build: bundle 238.4 KB gz, JS 25.1 KB gz, CSS 7.1 KB gz,
+screenshot. Current build: bundle 238.4 KB gz, JS 27.0 KB gz, CSS 7.5 KB gz,
 HTML 1.8 KB gz; 165 unit tests; text contrast 4.5:1 in both themes. Border
 contrast is a recorded phase-3 warning (D-010). `components.json` is the
 agent's index; screenshots are reserved for appearance questions.
@@ -219,7 +219,24 @@ browser's geolocation, resolved against a `places` gazetteer in the bundle
 addresses. With a place set, the day sorts by distance, each film leads with
 `1.6 km · ~4 min`, and every venue on a film page shows `km · ~min drive`.
 Distances are great-circle and time divides by 22 km/h (`DRIVE_KMH`), matching
-`cinemelb.geo.SPEED_KMH["drive"]` so the page and CLI agree.
+`cinemelb.geo.SPEED_KMH["drive"]` so the page and CLI agree. Since phase 13 the
+page also reads a position silently when `navigator.permissions.query` already
+reports `granted`; a first-time visitor is not prompted and can use the bar.
+Clear writes a `cinemelb-nolocate` preference and stops the silent reacquire
+until the user asks for a place again. GPS coordinates stay in memory; only
+typed places are persisted.
+
+**Day view (phase 13, D-023).** The current day now opens with **Starting
+soon**: up to five unique films with a catchable session in the next 120
+minutes, each naming time, venue, suburb and (with a place) distance/drive.
+Without a place the rows order by start; with one they order by leave-by time.
+The module is hidden when nothing qualifies, respects every filter, and uses the
+session's ticket URL for the time link. The film cards below are denser: 36x54
+cover, 14px title, 11.5px meta, a relevant venue (`Cinema Nova +2`; nearest when
+placed), and up to three distinct start times at every width (all when <=3, `+N`
+otherwise). The old
+`display:none` on phone time pills is gone. `app.js` moved to 27.0 KB gz, so the
+JS cap is 28 KB gz (D-024), still 4% headroom; bundle/CSS/HTML caps unchanged.
 
 iOS was handled explicitly after it "did nothing" in testing: the top-left brand
 mark was a circle with crosshair ticks, which read as a second locate button and

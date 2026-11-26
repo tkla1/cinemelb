@@ -428,9 +428,72 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 }
 .count { font-size: 12.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
+/* ---------------------------------------------------------- starting soon */
+/* Today opens with what is catchable, not with the whole catalogue. The module
+   is five compact rows at most; the full schedule stays below it. */
+
+.soon {
+  margin: 0 0 12px; padding: 8px 12px 4px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--panel);
+}
+.soon-head { display: flex; align-items: baseline; gap: 8px; margin: 0 0 2px; }
+.soon-head h2 {
+  margin: 0; font-size: 11.5px; font-weight: 680;
+  text-transform: uppercase; letter-spacing: .07em;
+  color: var(--accent-2);
+}
+.soon-count {
+  font-size: 11.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.soon-list { list-style: none; margin: 0; padding: 0; }
+.soon-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 0; border-top: 1px solid var(--line);
+}
+.soon-row:first-child { border-top: 0; }
+.soon-when {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 1px; flex: 0 0 62px;
+}
+.soon-time {
+  display: inline-flex; align-items: center; gap: 3px;
+  min-height: 24px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px; font-weight: 640; line-height: 1.25;
+  color: var(--text); text-decoration: none;
+}
+a.soon-time .time {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-3);
+}
+a.soon-time:hover { color: var(--accent); }
+a.soon-time:hover .time { color: var(--accent); text-decoration-color: var(--accent); }
+.soon-time .st-buy svg { width: 11px; height: 11px; }
+.soon-in {
+  font-size: 10.5px; color: var(--text-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.soon-body { display: flex; flex-direction: column; min-width: 0; }
+.soon-title {
+  display: block; min-height: 24px; line-height: 24px;
+  font-size: 13.5px; font-weight: 600; color: var(--text);
+  text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.soon-title:hover { color: var(--accent-2); }
+.soon-meta {
+  font-size: 11.5px; color: var(--text-3);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 /* ------------------------------------------------------------- film cards */
 
-.films { display: grid; gap: 9px; }
+.films { display: grid; gap: 7px; }
 
 /* ------------------------------------------------------------ poster grid */
 /* The browsing view: a poster per film, with the same scores and a next-time
@@ -476,8 +539,8 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .film:hover { border-color: var(--line-2); }
 .film[open] { border-color: var(--line-2); }
 .film > summary {
-  display: flex; align-items: center; gap: 12px;
-  padding: 9px 12px; min-height: 66px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px; min-height: 58px;
   cursor: pointer; list-style: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -486,9 +549,9 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 
 .poster {
   position: relative;
-  width: 44px; height: 66px; flex: 0 0 auto;
+  width: 36px; height: 54px; flex: 0 0 auto;
   display: block; overflow: hidden;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--bg-2); border: 1px solid var(--line);
 }
 .poster img {
@@ -511,12 +574,12 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .film-main { flex: 1 1 auto; min-width: 0; }
 .film-title {
   margin: 0;
-  font-size: 15px; font-weight: 620; letter-spacing: -.01em;
+  font-size: 14px; font-weight: 600; line-height: 1.25; letter-spacing: -.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .film-meta {
   margin: 1px 0 0;
-  font-size: 12.5px; color: var(--text-3);
+  font-size: 11.5px; line-height: 1.35; color: var(--text-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -529,27 +592,28 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .msep { font-weight: 400; }
 .mrest { font-weight: 400; }
 
-.film-times { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.film-times { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.film-main .film-times { margin-top: 3px; flex-wrap: wrap; }
 .time {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-variant-numeric: tabular-nums;
 }
 .film-times .time {
-  font-size: 11.5px; color: var(--text-2);
-  border: 1px solid var(--line); border-radius: 5px;
-  padding: 2px 5px; background: var(--bg-2);
+  font-size: 10.5px; color: var(--text-2);
+  border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 4px; background: var(--bg-2);
 }
 .film-times .time.is-soon {
   color: var(--accent-2); border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   background: var(--accent-dim);
 }
-.more { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.more { font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 
 /* Card-level entry into the film page: a tap target that does not toggle the
    card. */
 .film-open {
   flex: 0 0 auto;
-  width: 34px; height: 34px;
+  width: 30px; height: 30px;
   display: grid; place-items: center;
   border-radius: 999px;
   color: var(--text-3);
@@ -845,9 +909,19 @@ a.session:hover .time { text-decoration-color: var(--accent); }
   .near-me { font-size: 14px; }
   .near-icon { width: 16px; height: 16px; }
   .main { padding: 12px 12px 56px; }
-  .film-times { display: none; }
+  .soon { padding: 7px 10px 3px; margin-bottom: 10px; }
+  .soon-row { gap: 8px; padding: 5px 0; }
+  .soon-when { flex-basis: 56px; }
+  .soon-title { font-size: 13px; }
+  .soon-meta { font-size: 11px; }
   .day-head { margin-bottom: 10px; }
-  .day-head h1 { font-size: 18px; }
+  .day-head h1 { font-size: 17px; }
+  .film > summary { padding: 5px 9px; gap: 8px; min-height: 54px; }
+  .poster { width: 34px; height: 51px; }
+  .film-title { font-size: 13.5px; }
+  .film-meta { font-size: 11px; }
+  .film-times .time { font-size: 10px; }
+  .film-open { width: 28px; height: 28px; }
   .count-sessions { display: none; }
   .view-bar { max-width: none; margin: 6px 0 0; }
   .view-row { max-width: none; margin: 6px 0 0; gap: 7px; }

@@ -225,9 +225,19 @@ ways without ever rendering 1,900 rows:
 
 | Group by | Shape |
 |---|---|
-| **By film** (default) | one card per film, with its cinemas and next times |
+| **By film** (default) | one card per film, with a relevant venue, distance and next times |
 | **By cinema** | one expandable card per venue, listing its films and sessions |
 | **By time** | the same film cards, split into morning / afternoon / evening / late night |
+
+**Today, at a glance.** Before the grouping, the current day opens with **Starting
+soon**: up to five films with a catchable session in the next two hours, ordered
+by start time (or by leave-by time once a place is set). Each row shows the time,
+venue, suburb and distance, with the time as the ticket link and the title as the
+film-page link. The list below is denser than the old card: a 36x54 cover, a
+relevant venue (`Cinema Nova +2`, nearest when a place is set), scores,
+distance/drive and up to three start times — all of them when the film has three
+or fewer. Times are no longer hidden on a phone, and a session in the next hour
+is highlighted.
 
 A film page offers the same pivot: **by day** (day → venue), **by cinema**
 (venue → day), or **by time** (time of day → day → venue). The choice is a view
@@ -284,13 +294,16 @@ sessions starting sooner than the drive to the venue plus 20 minutes, not a flat
 **"Near me"** takes either a typed suburb or address, or the browser's own
 location (`navigator.geolocation`, which needs HTTPS and your permission), then
 sorts the day by distance and shows `1.6 km · ~4 min drive` on each film and
-next to every venue. Suburbs and landmarks resolve from a gazetteer shipped in
-the bundle; anything else is looked up through OpenStreetMap's Nominatim, which
-is the only request the page makes to a third party. Distances are
-great-circle and drive times divide by 22 km/h — the same planning figure
-`cinemelb near` uses, so the page and the CLI agree. Typed places are
-remembered in `localStorage`; coordinates from the browser's location are kept
-in memory only and never written to disk.
+next to every venue. If location permission was already granted, the page reads
+a position on load without prompting, so distances appear immediately; a
+first-time visitor can tap **Near me** and gets the normal permission prompt.
+**Clear** opts out of the silent reacquire until you ask for a place again.
+Suburbs and landmarks resolve from a gazetteer shipped in the bundle; anything
+else is looked up through OpenStreetMap's Nominatim, which is the only request
+the page makes to a third party. Distances are great-circle and drive times
+divide by 22 km/h — the same planning figure `cinemelb near` uses, so the page
+and the CLI agree. Typed places are remembered in `localStorage`; coordinates
+from the browser's location are kept in memory only and never written to disk.
 
 **Film pages and venues.** A film card expands to times and venues in place, and
 carries a small arrow to its own page (the page used to be reachable only by

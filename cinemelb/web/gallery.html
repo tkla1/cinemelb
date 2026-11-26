@@ -79,8 +79,15 @@ try {
 
   <section class="g-section" id="film-card" data-component="film-card">
     <h2>film-card <code>#film-card</code></h2>
-    <p class="g-note">Collapsed and expanded, with scores and time pills.</p>
+    <p class="g-note">Collapsed and expanded: next venue, scores and up to three time pills.</p>
     <div class="g-stage" id="g-film-card"></div>
+  </section>
+
+  <section class="g-section" id="starting-soon" data-component="starting-soon">
+    <h2>starting-soon <code>#starting-soon</code></h2>
+    <p class="g-note">Today only: up to five catchable films in the next two hours, with the
+      time as the ticket link. Hidden when nothing qualifies.</p>
+    <div class="g-stage" id="g-starting-soon"></div>
   </section>
 
   <section class="g-section" id="poster-tile" data-component="poster-tile">
@@ -249,6 +256,13 @@ try {
         var open = C.render.filmCard(hero, sample).replace(
           '<details class="film"', '<details class="film" open');
         cardBox.innerHTML = '<div class="films">' + collapsed + open + '</div>';
+      }
+
+      // Starting soon (today only; empty is a valid gallery state).
+      var soonBox = document.getElementById('g-starting-soon');
+      if (soonBox) {
+        soonBox.innerHTML = C.render.startingSoon(rows, true) ||
+          '<p class="g-planned">No catchable session in the next two hours.</p>';
       }
 
       // Poster tiles: cover + fallback

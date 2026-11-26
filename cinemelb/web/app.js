@@ -14,6 +14,8 @@
 (function () {
   // ------------------------------------------------------------------ config
   var LEAD_MINUTES = 20;      // a session starting sooner than this is not catchable
+  var SOON_WINDOW = 120;      // "Starting soon" covers the next two hours
+  var SOON_LIMIT = 5;         // five is a decision screen, not another list
   var RAIL_DAYS = 14;         // days shown in the day rail
   var TZ = 'Australia/Melbourne';
   // Planning speed for drive estimates, matching cinemelb.geo.SPEED_KMH.drive,
@@ -382,6 +384,8 @@
       // written to disk at all.
       if (persist) localStorage.setItem('cinemelb-place', JSON.stringify(place));
       else localStorage.removeItem('cinemelb-place');
+      // Asking for a place cancels an earlier "not now" from Clear.
+      localStorage.removeItem('cinemelb-nolocate');
     } catch (e) { /* private mode */ }
     var input = document.getElementById('near-q');
     if (input && place.source !== 'geolocation') input.value = place.name;
@@ -397,7 +401,12 @@
     // behind a control that is no longer visible.
     if (S.cinemaSort === 'distance') S.cinemaSort = 'time';
     S.filters.within = 0;
-    try { localStorage.removeItem('cinemelb-place'); } catch (e) { /* private mode */ }
+    try {
+      localStorage.removeItem('cinemelb-place');
+      // Clear is an explicit "not now": do not silently locate again on the
+      // next load. Tapping Near me or typing a place removes this flag.
+      localStorage.setItem('cinemelb-nolocate', '1');
+    } catch (e) { /* private mode */ }
     var input = document.getElementById('near-q');
     if (input) input.value = '';
     renderNear();
@@ -482,6 +491,32 @@
     }, { enableHighAccuracy: false, timeout: 12000, maximumAge: 120000 });
   }
 
+  /* A returning visitor who already allowed location should not have to tap
+     again. Browsers expose that decision through Permissions, so the app can
+     read a position on load without a surprise prompt. First-time visitors are
+     left alone; the near bar is one tap away. The coordinates are never
+     persisted (D-023). */
+  function autoLocate() {
+    if (S.place || !window.isSecureContext || !navigator.geolocation ||
+        !navigator.permissions || !navigator.permissions.query) return;
+    try {
+      if (localStorage.getItem('cinemelb-nolocate')) return;
+    } catch (e) { /* private mode */ }
+    navigator.permissions.query({ name: 'geolocation' }).then(function (status) {
+      if (status.state !== 'granted' || S.place) return;
+      navigator.geolocation.getCurrentPosition(function (pos) {
+        if (S.place) return;
+        setPlace({
+          name: 'your location',
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          source: 'geolocation'
+        }, false);
+      }, function () { /* stay unplaced; no error message for a silent try */ },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    }).catch(function () { /* permission query unsupported */ });
+  }
+
   function submitNear(event) {
     if (event) event.preventDefault();
     var input = document.getElementById('near-q');
@@ -546,6 +581,13 @@
   function isTooSoon(row) {
     var d = minutesUntil(row);
     return d >= 0 && d < LEAD_MINUTES;
+  }
+
+  /* The card highlights sessions in the next hour, not just the 20-minute
+     catchability floor: "soon" is what makes the collapsed row worth scanning. */
+  function isSoonShowing(row) {
+    var d = minutesUntil(row);
+    return d >= 0 && d < 60;
   }
 
   /* "Leaves time to get there" is travel-aware once a place is set: a session
@@ -620,7 +662,10 @@
 
   function hydrate(bundle, skipRender) {
     index(bundle);
-    if (!skipRender) render();
+    if (!skipRender) {
+      render();
+      autoLocate();
+    }
   }
 
   function index(bundle) {
@@ -1045,7 +1090,7 @@
       return;
     }
 
-    var html = head;
+    var html = head + startingSoon(rows, dateIdx === S.today);
     if (S.group === 'cinema') html += dayByCinema(rows);
     else if (S.group === 'time') html += dayByTime(rows);
     else if (S.layout === 'grid') html += dayByFilmGrid(rows);
@@ -1200,6 +1245,81 @@
       html += filmCard(order[k], groups.get(order[k]));
     }
     return html + '</div>';
+  }
+
+  /* "Starting soon" is the first decision on today's page: what can I still
+     catch, and how far away is it? One row per film, at most five. Without a
+     place the order is start time; with one it is leave-by time, so a nearby
+     9:30 session can outrank a distant 9:10. */
+  function soonPicks(rows) {
+    var byFilm = Object.create(null);
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var mins = minutesUntil(row);
+      if (mins < 0 || mins > SOON_WINDOW || S.rowSold[row] === 1) continue;
+      if (leavesTooLittleTime(row)) continue;
+      var km = S.place ? kmTo(S.rowCinema[row]) : null;
+      var leave = mins - (km == null ? 0 : driveMinutes(km) + 5);
+      var film = S.rowFilm[row];
+      var prev = byFilm[film];
+      if (!prev || leave < prev.leave) {
+        byFilm[film] = { row: row, leave: leave, mins: mins };
+      }
+    }
+    var picks = [];
+    for (var key in byFilm) picks.push(byFilm[key]);
+    picks.sort(function (a, b) {
+      return a.leave - b.leave || a.mins - b.mins;
+    });
+    return picks.slice(0, SOON_LIMIT);
+  }
+
+  function soonRow(pick) {
+    var row = pick.row;
+    var film = S.films[S.rowFilm[row]];
+    var cinema = S.cinemas[S.rowCinema[row]];
+    var minute = S.rowMinute[row];
+    var iso = S.bundle.dates[S.rowDate[row]];
+    var url = S.rowUrl[row] >= 0 ? safeHref(S.bundle.urls[S.rowUrl[row]]) : '';
+    var time = '<span class="time">' + clock(minute) + '</span>' +
+      (url ? '<span class="st-buy">' + venueIcon('ticket') + '</span>' : '');
+    var when = url
+      ? '<a class="soon-time" href="' + esc(safeHref(url)) + '" target="_blank"' +
+        ' rel="noopener noreferrer" title="Buy tickets for ' + esc(clock(minute)) +
+        ' at ' + esc(cinema[0]) + '" aria-label="Tickets for ' +
+        esc(clock(minute)) + ' at ' + esc(cinema[0]) + ', ' + esc(longDay(iso)) + '">' +
+        time + '</a>'
+      : '<span class="soon-time">' + time + '</span>';
+    var meta = [];
+    if (cinema[0]) meta.push(cinema[0]);
+    if (cinema[2]) meta.push(cinema[2]);
+    var km = S.place ? kmTo(S.rowCinema[row]) : null;
+    if (km != null) { meta.push(fmtKm(km)); meta.push(fmtDrive(km)); }
+    var mins = minutesUntil(row);
+    return '<li class="soon-row">' +
+      '<span class="soon-when">' + when +
+        '<span class="soon-in">' + (mins <= 1 ? 'now' : 'in ' + mins + ' min') +
+        '</span></span>' +
+      '<span class="soon-body">' +
+        '<a class="soon-title" href="#/film/' + encodeURIComponent(film[0]) + '">' +
+        esc(film[1]) + '</a>' +
+        '<span class="soon-meta">' + esc(meta.join(' \u00b7 ')) + '</span>' +
+      '</span></li>';
+  }
+
+  function startingSoon(rows, isToday) {
+    if (!isToday) return '';
+    var picks = soonPicks(rows);
+    if (!picks.length) return '';
+    var html = '<section class="soon" aria-labelledby="soon-head">' +
+      '<div class="soon-head"><h2 id="soon-head">Starting soon</h2>' +
+      '<span class="soon-count">' + picks.length + ' film' +
+      (picks.length === 1 ? '' : 's') + ' \u00b7 next 2 hours</span></div>' +
+      '<ol class="soon-list">';
+    for (var i = 0; i < picks.length; i++) {
+      html += soonRow(picks[i]);
+    }
+    return html + '</ol></section>';
   }
 
   /* The grid is the browsing view: one poster per film, same ordering as the
@@ -1406,8 +1526,9 @@
     }
 
     var times = '';
-    // One pill per distinct start time: "10am 10am 10am" wastes the row, and
-    // the venue count in the meta line already says how many cinemas run it.
+    // One pill per distinct start time: "10am 10am 10am" wastes the row. Three
+    // is the most that fits a 320px card without wrapping, and a film with three
+    // or fewer shows every time it has (D-023).
     var distinct = [];
     var lastMinute = -1;
     for (var d = 0; d < sorted.length; d++) {
@@ -1415,9 +1536,9 @@
       if (dm !== lastMinute) { distinct.push(sorted[d]); lastMinute = dm; }
     }
     var shown = 0;
-    for (var j = 0; j < distinct.length && shown < 5; j++) {
+    for (var j = 0; j < distinct.length && shown < 3; j++) {
       var r = distinct[j];
-      var soon = isTooSoon(r);
+      var soon = isSoonShowing(r);
       times += '<span class="time' + (soon ? ' is-soon' : '') + '">' +
         clock(S.rowMinute[r]) + '</span>';
       shown++;
@@ -1426,16 +1547,29 @@
       times += '<span class="more">+' + (distinct.length - shown) + '</span>';
     }
 
-    var meta = venueCount + (venueCount === 1 ? ' cinema' : ' cinemas');
+    // Name a venue instead of only counting cinemas: with a place, the nearest
+    // one (so the distance matches); without one, the next session's venue.
+    var nearIdx = null, nearKm = null;
+    if (S.place) {
+      for (var n = 0; n < sorted.length; n++) {
+        var kk = kmTo(S.rowCinema[sorted[n]]);
+        if (kk != null && (nearKm === null || kk < nearKm)) {
+          nearKm = kk;
+          nearIdx = S.rowCinema[sorted[n]];
+        }
+      }
+    }
+    var venueName = nearIdx != null ? S.cinemas[nearIdx][0]
+      : (sorted.length ? S.cinemas[S.rowCinema[sorted[0]]][0] : '');
+    var meta = venueName
+      ? venueName + (venueCount > 1 ? ' +' + (venueCount - 1) : '')
+      : 'No upcoming sessions';
     if (film[3]) meta += ' · ' + film[3];
     if (film[4]) meta += ' · ' + film[4] + ' min';
-    if (S.place) {
-      var nearKm = nearestKmOf(sorted);
-      if (nearKm != null) {
-        // Distance leads the meta line: it is the sort key here, and on a
-        // narrow screen the tail of this line is what gets clipped.
-        meta = fmtKm(nearKm) + ' · ~' + driveMinutes(nearKm) + ' min · ' + meta;
-      }
+    if (nearKm != null) {
+      // Distance leads the meta line: it is the sort key here, and on a
+      // narrow screen the tail of this line is what gets clipped.
+      meta = fmtKm(nearKm) + ' · ~' + driveMinutes(nearKm) + ' min · ' + meta;
     }
 
     var poster = posterTile(film, '');
@@ -1451,8 +1585,8 @@
       '<div class="film-main">' +
         '<h2 class="film-title">' + esc(film[1]) + '</h2>' +
         metaLine(film, meta) +
+        (times ? '<div class="film-times">' + times + '</div>' : '') +
       '</div>' +
-      '<div class="film-times">' + times + '</div>' +
       // The film page was only reachable by searching. A card-level arrow is the
       // obvious affordance; stopPropagation keeps the click from toggling the
       // <details> as well.
@@ -2382,6 +2516,7 @@
       state: S,
       render: Object.freeze({
         filmCard: filmCard,
+        startingSoon: startingSoon,
         filmTile: filmTile,
         posterTile: posterTile,
         scoreChips: scoreChips,

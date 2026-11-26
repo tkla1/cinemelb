@@ -210,7 +210,8 @@ def main() -> int:
                 check(table and table["actions"] and all(table["actions"]),
                       f"venue actions are named icon buttons ({table and len(table['actions'])})")
 
-            # +N: five time pills then an overflow count.
+            # Three time pills then an overflow count; the same card shows its
+            # times on a phone, and a film with three or fewer shows all of them.
             goto(page, base, f"#/day/{busy_date}", ".films .film")
             idx = page.evaluate(
                 "(key) => window.CINEMELB.state.films.findIndex(f => f[0] === key)",
@@ -218,13 +219,26 @@ def main() -> int:
             card = page.evaluate(
                 "(i) => { const c = document.querySelector('.film[data-film=\"' + i + '\"]');"
                 " if (!c) return null;"
+                " const st = window.CINEMELB.state;"
+                " const meta = c.querySelector('.film-meta').textContent;"
                 " return {times: c.querySelectorAll('.film-times .time').length,"
-                "  more: c.querySelector('.more')?.textContent.trim() || ''}; }", idx)
+                "  more: c.querySelector('.more')?.textContent.trim() || '',"
+                "  display: getComputedStyle(c.querySelector('.film-times')).display,"
+                "  venue: st.cinemas.some(x => x[0] && meta.indexOf(x[0]) >= 0),"
+                "  quiet: [...document.querySelectorAll('.films .film')].some(x =>"
+                "   x.querySelectorAll('.film-times .time').length > 0"
+                "   && !x.querySelector('.more'))}; }", idx)
             check(card is not None, "busy film has a card on its day")
-            check(card and card["times"] == 5,
-                  f"card shows five time pills ({card and card['times']})")
+            check(card and card["times"] == 3,
+                  f"card shows three time pills ({card and card['times']})")
             check(card and card["more"].startswith("+") and card["more"][1:].isdigit(),
                   f"overflow pill counts the rest ({card and card['more']!r})")
+            check(card and card["display"] == "flex",
+                  f"time pills are visible at 390px ({card and card['display']})")
+            check(card and card["venue"],
+                  "the collapsed meta line names a relevant venue")
+            check(card and card["quiet"],
+                  "a film with three or fewer times shows all of them")
 
             # Cinema-type filter: the independent half is tagged in the bundle,
             # and the chain list narrows with it.

@@ -7,7 +7,7 @@ import gzip
 import sys
 from pathlib import Path
 
-CAPS_KB = {"bundle": 260, "js": 26, "css": 12, "html": 6}
+CAPS_KB = {"bundle": 260, "js": 28, "css": 12, "html": 6}
 
 
 def gz(path: Path) -> int:

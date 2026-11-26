@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 6 | Supersedes: 5
+Spec version: 7 | Supersedes: 6
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -19,8 +19,8 @@ INSTRUCTION FILES: README.md (product, deploy, bundle shape), STATE.md (handoff,
   (3) screenshots answer appearance questions only; structure is verified by aria/DOM
   checks; (4) the spec is authoritative for UI work.
 
-ARCHITECTURE: vanilla JS IIFE — cinemelb/web/app.js (~94,000 B), one stylesheet app.css
-  (~32,000 B), one shell index.html (~4,848 B). Zero-build. Entry cinemelb/web/index.html.
+ARCHITECTURE: vanilla JS IIFE — cinemelb/web/app.js (~103,000 B), one stylesheet app.css
+  (~35,000 B), one shell index.html (~4,848 B). Zero-build. Entry cinemelb/web/index.html.
   Hash routing: #/ (today), #/day/<iso>, #/film/<key>[?time=<bucket>], #/search/<q>.
   Build: cinemelb/export.py::write_site -> dist/{index.html, assets/app.<hash>.{css,js},
   _headers, robots.txt, data/bundle.json}. Render functions are private to the IIFE, with a
@@ -33,14 +33,15 @@ CONSTRAINTS: Cloudflare Pages static (D-019: unmetered bandwidth, 200-status SPA
   remote poster images (IMDb CDN / venue hosts). Browser matrix: iOS Safari 16+,
   Android Chrome, desktop Chrome/Edge, Firefox ESR. Budgets in §8.
 
-SPEC: this file (SPEC.md), version 6. It is the only UI spec.
+SPEC: this file (SPEC.md), version 7. It is the only UI spec.
 
 UI INVENTORY: 4 routes + shared chrome (header/search, day rail, filter bar, near bar,
   footer). Components exist as functions in app.js: renderRail, renderFilters, renderNear,
-  viewBar, sortSelect, layoutToggle, cinemaSortBar, filmCard, posterTile, dayByFilmGrid,
-  dayByCinema, cinemaCard, dayByTime, venueBlocks, venueActions, sessions (session table),
-  scoreChips, renderFilm, renderSearch, renderSuggest. One CSS file; no per-component CSS;
-  tokens now generated from tokens.json; components.json + gallery.html added with this spec.
+  viewBar, sortSelect, layoutToggle, cinemaSortBar, startingSoon, filmCard, posterTile,
+  dayByFilmGrid, dayByCinema, cinemaCard, dayByTime, venueBlocks, venueActions, sessions
+  (session table), scoreChips, renderFilm, renderSearch, renderSuggest. One CSS file; no
+  per-component CSS; tokens now generated from tokens.json; components.json + gallery.html
+  added with this spec.
 
 DESIGN SYSTEM: cinemelb/web/tokens.json -> generated block in app.css; components.json;
   cinemelb/web/gallery.html. See §7.
@@ -112,7 +113,7 @@ discover structure that an aria snapshot would state for free).
 | Licensing | IMDb datasets non-commercial; OMDb CC BY-NC (IMDb/Metacritic only — it no longer returns RT); Metacritic keyless finder undocumented; RT page parsing against ToS (opt-in only, no `/search`). App code has **no LICENSE file** (open question) |
 | Bundle budget | §8 caps; exceeding one requires a decision entry |
 | Browser matrix | iOS Safari 16+, Android Chrome (last 2), Chrome/Edge (last 2), Firefox ESR |
-| Data/privacy | Typed places persisted in localStorage; GPS coordinates in memory only; no keys or PII in the bundle; Nominatim is the only outbound call, on user action |
+| Data/privacy | Typed places persisted in localStorage; GPS coordinates in memory only and requested on load only when permission is already granted, until Clear opts out; no keys or PII in the bundle; Nominatim is the only outbound call, on user action |
 | House rules | 44px primary tap targets; 16px inputs on iOS; ASCII in console output; `uv` only |
 
 ## 5. Data contracts
@@ -154,7 +155,8 @@ reintroduce a `javascript:` link. The bundle contract is v3: v2 plus the `aliase
 | Day rail | all | `day-rail`, `day-rail-item` | default, hover, focus-visible, current (`aria-current="date"`), 14-day window, scrolled | not rendered before bundle; no error state |
 | Filter bar | day, film | `filter-bar`, `filter-chip`, `filter-select`, `clear-filters` | off, on (`aria-pressed`), disabled n/a, horizontal scroll <640px, cinema type (all / chains / independents), chain list narrowed by type, chain absent when 1 chain, "within" absent until place | hidden on search route |
 | Near bar | day, film | `near-bar`, `near-me`, `near-input`, `near-status`, `near-clear` | unset, requesting (button disabled + status), set (distance line), denied, insecure context, 15s timeout, geolocation vs typed | error text names the platform cause; input remains usable; hidden on search route |
-| Day list — by film | `#/`, `#/day/<iso>` | `film-list`, `film-card`, `film-times`, `film-open` | collapsed, expanded, soon pill, +N overflow, sold-out-free (card level), no place, place set, 1 vs many cinemas | three distinct empties: no sessions that day / day over / filters hid N sessions with Clear |
+| Day — starting soon | `#/`, `#/day/<today>` | `starting-soon`, `soon-row`, `soon-time` | 1..5 rows, ticket-link time, no-URL row, soon accent, place-set distance, filtered, empty hidden | omitted when no catchable session starts in the next 120 min |
+| Day list — by film | `#/`, `#/day/<iso>` | `film-list`, `film-card`, `film-times`, `film-open` | collapsed, expanded, soon pill, +N overflow, 1..3 times shown, relevant venue, sold-out-free (card level), no place, place set, 1 vs many cinemas | three distinct empties: no sessions that day / day over / filters hid N sessions with Clear |
 | Day grid — poster tiles | same | `poster-grid`, `poster-tile`, `poster`, `poster-fallback` | 3 cols phone, 8 max desktop, no cover, broken image, no scores, next session not today, long title (2-line clamp) | same empties as list |
 | Day — by cinema | same | `cinema-card`, `day-sub` | collapsed, expanded, distance, from-time, 1 film vs many, address shown once | same empties |
 | Day — by time | same | `time-section` (`<details open>`) | open, collapsed, empty bucket omitted, late-night >24:00 label, film links carry `?time=<bucket>` | same empties |
@@ -205,7 +207,8 @@ Component set (all real, all in `app.js` today):
 | `filter-bar` | stable | `renderFilters`, `onChip`, `onSelect` | chips + native selects |
 | `near-bar` | beta | `renderNear`, `requestLocation`, `setPlace` | 5 error paths incl. iOS in-app browser |
 | `view-bar` | stable | `viewBar`, `sortSelect`, `layoutToggle`, `cinemaSortBar` | grouping + sort + grid toggle + Time/Distance |
-| `film-card` | stable | `filmCard` | `<details>` with poster, meta, time pills, arrow; time-section links carry `?time=` |
+| `starting-soon` | stable | `startingSoon` | today only; up to five catchable films in the next 120 min, ticket-link time, venue and distance |
+| `film-card` | stable | `filmCard` | `<details>` with a 36x54 cover, a relevant venue, up to three time pills on every width, arrow; time-section links carry `?time=` |
 | `poster-tile` | stable | `filmTile`, `posterTile` | one link per film; initials fallback |
 | `poster-grid` | stable | `dayByFilmGrid`, `renderSearch` | 3..8 columns |
 | `score-chip` | stable | `scoreBits`, `scoreChips` | inline in meta vs linked chips |
@@ -226,12 +229,12 @@ brotli, not measured — no brotli module installed and none to be added):
 | Asset | Raw | Gzip | Cap | Headroom |
 |---|---|---|---|---|
 | `data/bundle.json` (390-film v3 build) | 1,912,611 | 238.4 KB | 260 KB | 8% |
-| `app.js` | 94,553 | 25.1 KB | 26 KB | 3% |
-| `app.css` (with generated tokens) | 31,892 | 7.1 KB | 12 KB | 41% |
+| `app.js` | 103,291 | 27.0 KB | 28 KB | 4% |
+| `app.css` (with generated tokens) | 34,851 | 7.5 KB | 12 KB | 38% |
 | `index.html` | 4,848 | 1.8 KB | 6 KB | 70% |
 | Font files | 0 | 0 | 0 | system stack only |
 
-- JS <= 26 KB gz, CSS <= 12 KB gz, HTML <= 6 KB gz, bundle <= 260 KB gz.
+- JS <= 28 KB gz, CSS <= 12 KB gz, HTML <= 6 KB gz, bundle <= 260 KB gz.
 - Poster images are lazy, 300x444, `referrerpolicy="no-referrer"`, ~16 KB each, never
   counted in first load. Adding a poster to a card must not add a request per tile beyond
   the image itself.
@@ -272,7 +275,7 @@ Nominatim, on an explicit typed address.
 AC-006 [must] Every components.json id resolves to an existing window.CINEMELB.render
 function and a live gallery example; missing ids fail the check.
   check: manifest: uv run python scripts/check_manifest.py
-  status: passing (18 components)
+  status: passing (19 components)
 
 AC-007 [must] Every token named in components.json exists in the generated block.
   check: manifest: uv run python scripts/check_manifest.py --tokens
@@ -386,10 +389,10 @@ spinner.
   check: dom: uv run python tests/ui/layout.py  (reduced-motion case)
   status: passing (spinner 2.4s; no other infinite animation; media query active)
 
-AC-028 [must] Budgets hold: bundle <= 260 KB gz, JS <= 26 KB gz, CSS <= 12 KB gz,
+AC-028 [must] Budgets hold: bundle <= 260 KB gz, JS <= 28 KB gz, CSS <= 12 KB gz,
 HTML <= 6 KB gz.
   check: budget: uv run python scripts/check_budget.py dist
-  status: passing (bundle 238.4 KB, js 25.1 KB, css 7.1 KB, html 1.8 KB gz)
+  status: passing (bundle 238.4 KB, js 27.0 KB, css 7.5 KB, html 1.8 KB gz)
 
 AC-029 [must] A fresh export from the current database reports 390 films, 58 cinemas,
 19,057 screenings and 128 dates, matching Store counts.
@@ -492,6 +495,33 @@ and the repeated film-page venue blocks omit the street address.
           actions, 0 addresses in day venue blocks). Appearance witness:
           scratch/visual/phase10-film-390.png — the underlined time and ticket glyph read
           cleanly; verdict: keep.
+
+AC-045 [must] On today's day view, a "Starting soon" module lists at most five unique films
+with a catchable session in the next 120 minutes, before the day's grouping. Each row names
+the start time, film, venue and suburb; with a place set it also shows distance and drive
+time. Past, sold-out, filtered and leaves-too-little-time sessions are excluded, and the
+module is absent when no row qualifies.
+  given: 2026-11-27 19:00 Melbourne, #/
+  check: dom: uv run python tests/ui/layout.py  (starting-soon case)
+  status: passing (2026-11-26; 5 rows, ascending start, 120-min window, safe ticket links)
+
+AC-046 [must] Every collapsed day film card shows up to three distinct start times at every
+width, including 390px; a film with three or fewer shows all of them, and a busier film ends
+with +N. The meta line names a relevant venue and, with a place set, the distance and drive
+time for the nearest one.
+  check: dom: uv run python tests/ui/states.py  (card-times case) and layout.py
+  status: passing (2026-11-26; 3 pills at 390px, +N for a busy film, nearest/next venue in meta)
+  evidence: scratch/visual/phase13-day-30f5833-390.png and -1280.png — the Starting
+          soon module and denser cards read cleanly; verdict: keep (appearance only).
+
+AC-047 [must] Geolocation is requested on load only when permission is already granted; a
+first-time visitor is not prompted. A granted location sets the place, shows distances
+immediately, and is never written to localStorage. Clear stops the silent request until the
+user asks for a place again.
+  given: context geolocation (-37.8136, 144.9631) + permission granted, #/
+  check: dom: uv run python tests/ui/layout.py  (auto-locate case)
+  status: passing (2026-11-26; state.place.source=geolocation, km in cards, no cinemelb-place,
+          Clear survives a reload without a stored coordinate)
 ```
 
 ## 10. Decision log
@@ -638,7 +668,7 @@ T0/T1 check scripts in one phase. Existing component markup and CSS selectors st
 unchanged except for moving score colours and the focus ring onto tokens.
 Implementation: `scripts/build_tokens.py` (generate/check/strip), `check_tokens.py`
 (coverage/literals/motion), `check_contrast.py`, `check_manifest.py`, `check_bundle.py`,
-`check_budget.py`; `window.CINEMELB.render`; `gallery.html` with 13 live sections and 5
+`check_budget.py`; `window.CINEMELB.render`; `gallery.html` with 14 live sections and 5
 planned. `--text-3` was raised to 4.5:1 in both themes; score colours and focus ring moved
 to tokens. All phase-1 checks are green.
 Rejected: component work first (would hardcode values again); a second stylesheet
@@ -927,6 +957,75 @@ tab stops); a separate ticket column (two tab stops per session).
 Revisit if: the glyph tests poorly with real users, or the session table gains a separate
 price/ticket column.
 
+### D-023 Day view starts with what is catchable now (2026-11-26)
+
+Context: a day holds ~1,900 sessions and ~100 film cards. On a phone the time pills were
+hidden below 640px, so the first screen showed titles and scores but not when or where the
+next session was. Distance appeared only after an explicit location action, and the default
+"Soonest" order had no "can I actually get there" signal.
+
+Decision:
+- Today's day view opens with a **Starting soon** module before the grouping: up to five
+  unique films with a catchable session starting in the next 120 minutes. Rows order by
+  start time without a place and by `minutes until start - drive minutes` once a place is
+  set, so a nearby 9:30 session can outrank a distant 9:10 one. Each row names the start,
+  film, venue and suburb, plus distance/drive when known; the start is the ticket link when
+  the session has a URL and the title opens the film page. Past, sold-out, filtered and
+  leaves-too-little-time rows are excluded; the module disappears when nothing qualifies.
+- The collapsed day card is denser: 14px title, 11.5px meta, 36x54 cover, 58px summary. It
+  names a relevant venue (`Cinema Nova +2`): the nearest one with a place, so the distance
+  matches, otherwise the next session's venue. It shows distance/drive when a place is set,
+  and shows up to three distinct start times at every width (all when <=3, `+N` otherwise).
+  The phone-only `display:none` on time pills is removed.
+- On load the app requests geolocation only when
+  `navigator.permissions.query({name:'geolocation'})` already reports `granted`; a
+  first-time visitor gets no surprise prompt and can use the near bar. GPS coordinates stay
+  in memory (never localStorage); typed places still persist. The explicit Near me action
+  keeps its 15-second watchdog. **Clear** writes a `cinemelb-nolocate` preference so a
+  cleared location is not silently reacquired; Near me or typing a place removes it.
+
+Rejected:
+- A separate "now" route or tab: splits the day and hides the rest of the schedule.
+- Auto-prompting geolocation on first paint: a surprise prompt is easy to deny, and a denial
+  sticks; permission state is the honest signal for a silent request.
+- Keeping five time pills: three is the most that fits a 320px card without wrapping, and
+  fewer, larger targets read better.
+- Removing list posters: recognition is worth the 36x54 box, which is about a sixth of the
+  row.
+- Showing every session in the module: five is a decision screen; the full list below keeps
+  the complete schedule.
+
+Revisit if: the app learns session end times (then "already started but catchable" enters
+the module), or walk/transit modes replace the single drive estimate.
+
+Consequences: the module respects filters and sold-out data and duplicates at most five
+films from the list by design. Auto-location adds no network request; it only reads a
+permission the user already granted.
+
+### D-024 JS budget raised to 28 KB gz for the day-view decision layer (2026-11-26)
+
+Context: D-023 added the Starting soon module, the venue/time-card logic and the
+granted-permission locator. A fresh export measured `app.js` at 103,291 raw / 27.0 KB gz,
+1.0 KB over the 26 KB cap; the release before this change was 25.1 KB gz (0.9 KB headroom),
+so the old cap could not absorb a decision surface that renders session rows separately from
+the film list.
+
+Decision: raise the `app.js` cap to **28 KB gz** and keep the bundle (260), CSS (12) and HTML
+(6) caps unchanged. The cap remains a real ceiling: the measured build is 27.0 KB with ~4%
+headroom. This is a decision entry, not a silent budget change.
+
+Rejected:
+- Hand-minifying the IIFE: no build step, and an unreadable diff defeats the agent-legible
+  source the project depends on.
+- Dropping the module: it is the requested behaviour (what can I catch now, near me).
+- Shipping it behind a flag: the bytes still ship, and the default path is the one that
+  matters.
+- Shaving comments to fit 26 KB: it would buy a few hundred bytes at the cost of the
+  rationale future agents need.
+
+Revisit when: `app.js` passes 28 KB gz, or a real minifier becomes acceptable; then reopen
+the zero-build budget rather than shaving meaning out of the source.
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -943,6 +1042,7 @@ price/ticket column.
 | 10 (complete 2026-11-26) | Film-page continuity (D-020): time-bucket scope, session table with a ticket cue, icon venue actions, Time/Distance cinema sort | AC-042,043,044 green via `tests/ui/film.py` + `states.py`; 320px table geometry; budgets hold | Revert `renderFilm`/`dayByTime`/`filmCard`/`venueBlocks`/`sessions`/`viewBar` and the session/venue CSS blocks; no data or bundle change |
 | 11 (complete 2026-11-26) | Release gate (D-021): `scripts/release.py` with clean-tree refusal, full check ladder, pinned wrangler, push verification and live asset-hash poll; `--dry-run` | `--dry-run` green; full run pushes, deploys and verifies the production alias | Revert the script and its README/STATE/SPEC rows; no app or data change |
 | 12 (complete 2026-11-26) | Ticket cue refinement (D-022): glyph-only cue, underlined time, accessible label retained | AC-044 green via `tests/ui/states.py`; 320px/film tests and live hash check | Revert `sessions()` and the `.st-buy`/`a.session .time` CSS; no data change |
+| 13 (complete 2026-11-26) | Day-view efficiency (D-023): Starting soon module, dense cards with visible times/venue, granted-permission auto-locate | AC-045,046,047 green via `tests/ui/layout.py` + `states.py`; 320/390/1280; budgets hold | Revert `startingSoon`, `filmCard`, `autoLocate` and the day/soon CSS; persisted keys unchanged |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -1074,7 +1174,7 @@ current `render` paths, so the manifest never lags the code.
 | 4 | Is `--text-3` allowed to stay below 4.5:1 for decorative 11px meta text, or does it become a AA token change? — **resolved:** text tokens now meet 4.5:1; border contrast deferred (D-010) | maintainer | AC-004, phase 2 |
 | 5 | Does hotlinking IMDb/venue poster images carry a licensing or reliability risk worth self-hosting 320 covers? | maintainer | §4 licensing, `posterTile` |
 | 6 | Should the app gain a CSP? The one inline `onclick` on `.film-open` and the inline theme script both shape that answer. External assets now carry SRI (D-015); the map's inline JSON is escaped (D-012) | maintainer | D-007 consequences, phase 2 |
-| 7 | Is the 15s geolocation watchdog + iOS copy still correct on iOS 18/26, or does `navigator.permissions.query` allow a cleaner path? | maintainer | near-bar AC (not yet written) |
+| 7 | Is the 15s geolocation watchdog + iOS copy still correct on iOS 18/26, or does `navigator.permissions.query` allow a cleaner path? — **resolved for auto-locate:** the permissions state decides whether to locate silently on load; the explicit Near me action keeps the 15s watchdog | maintainer | near-bar AC (not yet written) |
 | 8 | Does the repo get a LICENSE (code) now that posters and scores carry third-party terms? | maintainer | §4 |
 | 9 | Should the deploy be automated? Hosting is a manual Direct Upload (D-019), so `refresh → export → wrangler` runs by hand; a cron needs a scheduler decision (GitHub Actions committing regenerated data vs a Cloudflare build hook, which would move the deploy to a git build) | maintainer | D-019 consequences, T5 |
 
@@ -1086,13 +1186,13 @@ current `render` paths, so the manifest never lags the code.
 | T0 | `uv run python -c "import json;json.load(open('dist/data/bundle.json'))"` | bundle parses | green |
 | T1 | `uv run python scripts/check_tokens.py` (`--coverage`, `--literals`, `--motion`) | token drift, orphan tokens, raw literals | green |
 | T1 | `uv run python scripts/check_contrast.py` | WCAG ratios from tokens.json | green (text 4.5:1; borders warning D-010) |
-| T1 | `uv run python scripts/check_manifest.py` | manifest <-> render fn <-> gallery <-> tokens | green (18 components / 25 tokens) |
+| T1 | `uv run python scripts/check_manifest.py` | manifest <-> render fn <-> gallery <-> tokens | green (19 components / 25 tokens) |
 | T1 | `uv run python scripts/check_bundle.py dist/data/bundle.json` (`--titles`, `--against-db`) | arity, indices, counts, prefixes, DB parity | green |
-| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (238.4 / 25.1 / 7.1 / 1.8 KB gz) |
+| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (238.4 / 27.0 / 7.5 / 1.8 KB gz) |
 | T1 | `uv run python scripts/security_gate.py` | secrets in worktree + every commit, ruff S-rules, JS sinks, invariants, lock, bundle | green (~1.2s, 2026-11-26) |
 | T1 | `uv run python scripts/check_security.py` | output-context invariants, SRI, export guard, Host allowlist, 500 text (also run by the gate) | green (2026-11-26) |
-| T2 | `uv run python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
-| T2 | `uv run python tests/ui/states.py` | card/tile states, session table, poster fallback, filtered empty | green |
+| T2 | `uv run python tests/ui/layout.py` | aria snapshots, geometry, focus, target size, Starting soon window, granted-permission auto-locate and Clear opt-out at 320/390/1280 | green |
+| T2 | `uv run python tests/ui/states.py` | card/tile states, card time pills, session table, poster fallback, filtered empty | green |
 | T2 | `uv run python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
 | T2 | `uv run python tests/ui/film.py` | hero, icon actions, time-bucket scope, After carry, cinema sort, 320px table geometry | green |
 | T2 | `uv run python tests/ui/alias.py` | bundle aliases, alias search, title ranking, "listed as" | green |
