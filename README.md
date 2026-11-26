@@ -173,6 +173,8 @@ Deploying it is one command, after a refresh so the times are current:
 
 ```bash
 python -m cinemelb refresh
+python -m cinemelb ratings
+python -m cinemelb posters
 python -m cinemelb export --out dist
 npx wrangler pages deploy dist --project-name cinemelb --branch main
 ```
@@ -183,8 +185,8 @@ is in `data/cinemelb.sqlite3` at the time. `cinemelb/web/` is the source shell
 
 The bundle is index-table shaped. A screening is nine integers pointing into
 shared tables (date, film, minute, cinema, format, attribute set, sold-out,
-ticket URL, screen), and the whole 19k-screening dataset is about 1.8 MB raw,
-or roughly 170 KB gzipped over the wire. Attribute spellings are canonicalised
+ticket URL, screen), and the whole 19k-screening dataset is about 1.9 MB raw,
+or roughly 235 KB gzipped over the wire. Attribute spellings are canonicalised
 (`Closed Captioning Available` → `CC`), synopses are capped at 200 characters,
 and rows are sorted by date then minute so a day is a contiguous slice.
 
@@ -206,6 +208,12 @@ A film page offers the same pivot: **by day** (day → venue), **by cinema**
 (venue → day), or **by time** (time of day → day → venue). The choice is a view
 preference, so it is remembered in `localStorage` and survives a reload.
 
+**Sorting.** Beside the grouping control is a **Sort** menu: *Soonest* (the
+schedule), *Top rated*, *Title A–Z*, and *Nearest* once a location is set. Top
+rated averages whichever scores a film has, normalised to 0–1, so a film with
+only a Metascore still ranks sensibly; unrated films sort last. The choice is
+remembered too.
+
 The time-of-day sections collapse: click a heading to fold that part of the day
 away, which makes "what is on after work" readable without scrolling past the
 morning. And a session after midnight belongs to the **previous** listing day —
@@ -222,8 +230,7 @@ cut the list down:
 
 "Leaves time to get there" becomes travel-aware when a place is set: it hides
 sessions starting sooner than the drive to the venue plus 20 minutes, not a flat
-20 minutes. Filters are in memory only; the grouping choice is the one thing
-persisted.
+20 minutes. Filters are in memory only; grouping and sort are persisted.
 
 **"Near me"** takes either a typed suburb or address, or the browser's own
 location (`navigator.geolocation`, which needs HTTPS and your permission), then
@@ -245,9 +252,23 @@ session has no URL, the venue link is the fallback rather than a dead button.
 
 **Ratings.** IMDb, Rotten Tomatoes and Metacritic chips come from
 `data/ratings.json`, baked in at export time by `python -m cinemelb ratings`;
-the browser never calls a ratings API and holds no key. A missing score is not
-rendered — never a dash or a zero — and each chip links to its source. See
-`docs/api-reference/` for the matching rules and the terms behind each source.
+the browser never calls a ratings API and holds no key. Scores are printed on
+the collapsed film card (`IMDb 7.5 · MC 55`) as well as in its expanded body
+and on the film page, so the Top rated sort has something visible to order by.
+A missing score is not rendered — never a dash or a zero — and each chip links
+to its source. See `docs/api-reference/` for the matching rules and the terms
+behind each source.
+
+**Covers.** Posters are resolved at build time by `python -m cinemelb posters`
+and cached in `data/posters.json`. Venue feeds were the original source, but
+Palace answers every `/poster/<name>` request with the same Palace Cinemas logo,
+so a third of the catalogue was wearing the house advert as a cover. The
+resolver asks IMDb's public search-suggestion endpoint and accepts only an
+exact normalised-title match, a near-exact match with a year within one, or a
+candidate whose id is the one the ratings pass already resolved. A film with no
+confident match keeps its venue poster when that poster is real, and otherwise
+gets a typographic tile in the UI. The image is requested at 300×444, so a
+cover costs ~16 KB and the full-size original is never downloaded.
 
 `_headers` gives the hashed assets a one-year immutable cache and the bundle
 five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare
@@ -277,6 +298,23 @@ keyless fallback and Rotten Tomatoes needs `--scrape-rt-mc`, which is against
 both sites' terms — see `docs/api-reference/rt-metacritic.md`. Everything lands
 in `data/ratings.json` (gitignored); `export` bakes it in, and `--no-ratings`
 leaves the fields null.
+
+### `posters` — resolve a real cover for every film
+
+```bash
+python -m cinemelb posters                  # fill data/posters.json
+python -m cinemelb posters --limit 20       # smoke run (new lookups only)
+python -m cinemelb posters --refresh        # ignore the cache
+```
+
+Build-time only, like ratings. IMDb's public search-suggestion endpoint returns
+a poster URL with each candidate; the gate accepts an exact normalised title,
+a near-exact title with a release year within one, or the IMDb id the ratings
+pass resolved. Nothing looser — a wrong cover is worse than no cover. Films with
+no confident match keep their venue's poster if it is real (Palace's
+`/poster/` endpoint is always its logo, so it is treated as a placeholder), and
+otherwise render a typographic tile. Cached URLs are requested at 300×444 from
+the IMDb image CDN, roughly 16 KB per cover.
 
 `--json` is a global flag and goes **before** the command:
 

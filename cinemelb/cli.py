@@ -870,6 +870,8 @@ def export(
     no_urls: bool = typer.Option(False, "--no-urls", help="Drop ticket URLs (smaller bundle)"),
     ratings: bool = typer.Option(True, "--ratings/--no-ratings",
                                  help="Bake cached IMDb/RT/MC scores into the bundle"),
+    posters: bool = typer.Option(True, "--posters/--no-posters",
+                                 help="Bake resolved cover images into the bundle"),
 ) -> None:
     """Build the static SPA site into a directory, ready to deploy."""
     from .export import build_bundle, write_site
@@ -881,6 +883,7 @@ def export(
         synopsis_cap=synopsis,
         include_urls=not no_urls,
         ratings=_ratings_for(store) if ratings else None,
+        posters=_posters_for() if posters else None,
     )
     path = write_site(bundle, out)
 
@@ -894,6 +897,8 @@ def export(
     console.print(f"  bundle  {payload / 1024:,.0f} KB  →  {path}")
     if ratings:
         console.print(f"  ratings {counts.get('rated', 0)} of {counts['films']} films scored")
+    if posters:
+        console.print(f"  covers  {counts.get('posters', 0)} of {counts['films']} films")
 
 
 def _ratings_for(store) -> dict[str, dict]:
@@ -913,6 +918,81 @@ def _ratings_for(store) -> dict[str, dict]:
         if entry:
             out[film["key"]] = entry
     return out
+
+
+def _posters_for() -> dict[str, dict]:
+    """Film key -> cached cover entry. Missing cache is not an error."""
+    try:
+        from .posters import load_cache
+    except ImportError:
+        return {}
+    return load_cache(Path("data/posters.json"))
+
+
+@app.command()
+def posters(
+    ctx: typer.Context,
+    limit: Optional[int] = typer.Option(
+        None, "--limit", help="Only look up this many films that are not cached"),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Ignore cached covers and look them up again"),
+    retry_misses: bool = typer.Option(
+        False, "--retry-misses",
+        help="Look up films that were cached as no-match, keeping resolved covers"),
+    pace: float = typer.Option(0.35, "--pace", help="Seconds between IMDb requests"),
+    ttl: float = typer.Option(30.0, "--ttl", help="Days a cached cover stays fresh"),
+) -> None:
+    """Resolve a real cover image for every film.
+
+    Venue feeds are inconsistent and Palace's poster endpoint returns its own
+    logo for every title, so covers are resolved from IMDb's public suggestion
+    endpoint and cached in ``data/posters.json``. Matching is strict; a film
+    with no confident match keeps its venue poster (unless that poster is a
+    known placeholder) and otherwise gets a typographic fallback in the UI.
+    """
+    from .posters import enrich
+
+    store = _store(ctx)
+    films = store.films()
+    if not films:
+        console.print("[yellow]No films in the database. Run `refresh` first.[/yellow]")
+        raise typer.Exit(1)
+
+    imdb_ids: dict[str, str] = {}
+    for key, entry in _ratings_for(store).items():
+        imdb_id = str(entry.get("imdb_id") or "")
+        if imdb_id:
+            imdb_ids[key] = imdb_id
+
+    seen = 0
+
+    def progress(film_key: str, entry: dict) -> None:
+        nonlocal seen
+        seen += 1
+        if seen % 25 == 0:
+            console.print(
+                f"  {seen:>4}  {film_key[:40]:<40} {entry.get('status', '-'):<5} "
+                f"{entry.get('imdb_id', '')}",
+                highlight=False,
+            )
+
+    result = enrich(
+        films,
+        cache_path=Path("data/posters.json"),
+        imdb_ids=imdb_ids,
+        limit=limit,
+        ttl_days=0 if refresh else ttl,
+        pace=pace,
+        retry_misses=retry_misses,
+        progress=progress,
+    )
+    stats = result["stats"]
+    console.print(
+        f"[bold]Covers[/bold] {stats['films']} films · cached {stats['cached']} · "
+        f"looked up {stats['looked']} · resolved {stats['ok']} · missing "
+        f"{stats['miss']} · failed {stats['failed']}"
+    )
+    console.print("  cache  data/posters.json — run `export` to bake it in")
 
 
 @app.command()

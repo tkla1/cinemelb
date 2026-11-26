@@ -17,11 +17,11 @@ for each, and expose a tool that answers:
 |---|---|
 | Registry | 63 rows in `data/cinemas.json` (58 active) |
 | Venues with live data | **58 of 58 active** |
-| Screenings | 19,091 |
+| Screenings | 19,057 |
 | Coverage window | 25 Nov 2026 – 31 Jul 2027 |
 | Working adapters | hoyts, village, palace, reading, movingstory, nova, sun, acmi, imax, indy, lumos, waverley, generic_html |
 | Missing adapters | none |
-| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,serve,export}` |
+| CLI | `python -m cinemelb {film,at,now,near,next,week,whats-on,trending,cinemas,search,stats,doctor,refresh,map,ratings,posters,serve,export}` |
 | Web UI | `python -m cinemelb serve --port 8765` — SSR, stdlib, read-only |
 | Static site | **https://cinemelb.pages.dev** — `python -m cinemelb export` → Cloudflare Pages |
 | Tests | 45 pass (1 skipped); `python -m unittest discover -s tests` |
@@ -31,8 +31,8 @@ for each, and expose a tool that answers:
 
 `cinemelb export --out dist` writes a self-contained SPA: `index.html`, two
 content-hashed assets, `_headers`, `robots.txt`, and `data/bundle.json`
-(19,057 sessions · 393 films · 58 cinemas · through 31 Jul 2027; 1.8 MB raw,
-~170 KB gzipped). Deployed to the Cloudflare Pages project `cinemelb`:
+(19,057 sessions · 393 films · 58 cinemas · through 31 Jul 2027; 1.9 MB raw,
+~235 KB gzipped). Deployed to the Cloudflare Pages project `cinemelb`:
 
 ```bash
 python -m cinemelb refresh
@@ -106,6 +106,24 @@ finder, 0 Rotten Tomatoes, 0 failures. RT needs either `OMDB_API_KEY` or
 `--scrape-rt-mc`; `AKIRA` resolved to `tt0094625` (1988), which is the case the
 confidence gate exists for. The datasets live in `data/cache/` (755 MB, cached
 and pickled); `data/ratings.json` is gitignored and rebuilt by the command.
+
+**Covers and sorting (26 Nov follow-up).** Palace's `/poster/<name>` endpoint
+answers every filename with the same Palace Cinemas logo, so films at its nine
+venues were showing the house advert as a cover, and only 192 of 393 films had
+any cover at all. `python -m cinemelb posters` now resolves covers from IMDb's
+public search-suggestion endpoint into `data/posters.json` (gitignored),
+accepting an exact normalised title, a near-exact title with a year within one,
+or the ratings pass's IMDb id; Palace `/poster/` URLs are treated as
+placeholders and dropped. Result: **287 IMDb covers + 31 real venue covers =
+318 of 393 films**, and 16 of today's 17 films have a real cover; the remaining
+75 fall back to an initials tile. The card shows a 44×66 cover and puts
+`IMDb 7.5 · MC 55` in its meta line, the film page shows a 132×198 (96×144 on
+mobile) cover, and a broken/missing image degrades to the initials tile. A
+**Sort** select beside the grouping control offers Soonest / Top rated /
+Title A–Z / Nearest (the last only with a place set); Top rated averages the
+available scores normalised to 0–1, unrated films last. Both the sort and the
+grouping are persisted in `localStorage`. Metascore `0` (Metacritic's "no
+reviews yet" sentinel) is dropped at export, so no card shows a bogus `MC 0`.
 
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.

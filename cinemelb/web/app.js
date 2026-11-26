@@ -56,6 +56,15 @@
     { from: 17 * 60, to: 21 * 60, name: 'Evening' },
     { from: 21 * 60, to: 30 * 60, name: 'Late night' }
   ];
+  // Ordering of the day's film cards. "Soonest" is the schedule reading;
+  // "Top rated" is the one that needs scores, so those are a first-class part
+  // of the card rather than something hidden in the expanded body.
+  var SORTS = [
+    ['soonest', 'Soonest'],
+    ['rating', 'Top rated'],
+    ['title', 'Title A–Z'],
+    ['near', 'Nearest']
+  ];
 
   // ------------------------------------------------------------------- state
   var S = {
@@ -72,6 +81,8 @@
     filters: { accessible: false, chain: '', later: false, after: 0, within: 0 },
     group: 'film',       // day view: 'film' | 'cinema' | 'time'
     filmGroup: 'day',    // film view: 'day' | 'cinema' | 'time'
+    sort: 'soonest',    // day view: 'soonest' | 'rating' | 'title' | 'near'
+    sortSaved: false,   // has the user chosen a sort explicitly?
     place: null,       // { name, lat, lon, source } once a location is set
     route: { name: 'day', date: null, film: null },
     chains: []
@@ -335,6 +346,9 @@
 
   function setPlace(place, persist) {
     S.place = place;
+    // Sorting by distance is why a location is useful; only do it until the
+    // user has expressed a preference of their own.
+    if (!S.sortSaved) S.sort = 'near';
     try {
       // Typed places are worth remembering; precise GPS coordinates are not
       // written to disk at all.
@@ -349,6 +363,7 @@
 
   function clearPlace() {
     S.place = null;
+    if (!S.sortSaved && S.sort === 'near') S.sort = 'soonest';
     // The drive-time filter is meaningless without a place, and leaving it set
     // would keep hiding sessions behind a control that is no longer visible.
     S.filters.within = 0;
@@ -665,12 +680,21 @@
           'Metacritic via OMDb where configured.'
         : '';
     }
+    var fp = document.getElementById('foot-posters');
+    if (fp) {
+      fp.hidden = !n.posters;
+      fp.textContent = n.posters
+        ? 'Poster images via IMDb; remaining covers come from each venue.'
+        : '';
+    }
   }
 
   // -------------------------------------------------------------- rendering
   function render() {
     var main = document.getElementById('main');
     if (!S.bundle) return;
+    // A persisted "Nearest" outlives the place it was chosen for.
+    if (!S.place && S.sort === 'near') S.sort = 'soonest';
     // Route first: the rail highlights whichever day the route names, so
     // reading S.route before it is refreshed left the highlight one click behind.
     var route = parseRoute();
@@ -770,7 +794,9 @@
   }
 
   /* The "group by" control. It is rendered into the results, not the filter
-     bar, because it changes the shape of the list rather than its contents. */
+     bar, because it changes the shape of the list rather than its contents.
+     On a day, a sort control sits beside it: "Top rated" is only useful if it
+     is visible without expanding a card. */
   function viewBar(kind) {
     var options = kind === 'film'
       ? [['day', 'By day'], ['cinema', 'By cinema'], ['time', 'By time']]
@@ -783,7 +809,22 @@
         '" data-view="' + options[i][0] + '" data-view-kind="' + kind +
         '" aria-pressed="' + on + '">' + esc(options[i][1]) + '</button>';
     }
-    return html + '</div>';
+    html += '</div>';
+    if (kind === 'day') html = '<div class="view-row">' + html + sortSelect() + '</div>';
+    return html;
+  }
+
+  function sortSelect() {
+    var html = '<label class="sort-wrap"><span class="sort-label">Sort</span>' +
+      '<select id="sort" class="select select-sort" aria-label="Sort films">';
+    for (var i = 0; i < SORTS.length; i++) {
+      var value = SORTS[i][0];
+      // "Nearest" is only meaningful once there is a point to measure from.
+      if (value === 'near' && !S.place) continue;
+      html += '<option value="' + value + '"' +
+        (value === S.sort ? ' selected' : '') + '>' + esc(SORTS[i][1]) + '</option>';
+    }
+    return html + '</select></label>';
   }
 
   function renderDay(main, dayIso) {
@@ -859,11 +900,63 @@
     return groups;
   }
 
-  /* Order by distance when a location is set, otherwise by the next session
-     still to come, so the page reads as a schedule. */
+  /* One comparable score for "top rated": normalise whichever sources exist to
+     0..1 and average them, so IMDb 8.0 (0.80) and Metascore 80 (0.80) agree,
+     and a film with only one source is not penalised for the missing one. */
+  function filmRating(film) {
+    var vals = [];
+    if (film && film[10] > 0) vals.push(film[10] / 10);
+    if (film && film[11] != null) vals.push(film[11] / 100);
+    if (film && film[12] > 0) vals.push(film[12] / 100);
+    if (!vals.length) return null;
+    var sum = 0;
+    for (var i = 0; i < vals.length; i++) sum += vals[i];
+    return sum / vals.length;
+  }
+
+  function ratingOfRows(rows) {
+    if (!rows || !rows.length) return null;
+    return filmRating(S.films[S.rowFilm[rows[0]]]);
+  }
+
+  function bestRatingOf(rows) {
+    var best = null;
+    for (var i = 0; i < rows.length; i++) {
+      var value = filmRating(S.films[S.rowFilm[rows[i]]]);
+      if (value != null && (best === null || value > best)) best = value;
+    }
+    return best;
+  }
+
+  function firstMinuteOf(rows) {
+    var first = Infinity;
+    for (var i = 0; i < rows.length; i++) first = Math.min(first, S.rowMinute[rows[i]]);
+    return first;
+  }
+
+  /* Order film cards by the chosen sort. Distance was the implicit order once
+     a location was set; it is now one option among four, so "Soonest" means
+     soonest even for someone who has typed a suburb. */
   function orderFilms(groups) {
     var order = Array.from(groups.keys());
-    if (S.place) {
+    var mode = S.sort;
+    if (mode === 'near' && !S.place) mode = 'soonest';
+
+    if (mode === 'title') {
+      order.sort(function (a, b) {
+        return S.films[a][1].localeCompare(S.films[b][1]);
+      });
+    } else if (mode === 'rating') {
+      order.sort(function (a, b) {
+        var ra = ratingOfRows(groups.get(a));
+        var rb = ratingOfRows(groups.get(b));
+        if (ra === null) ra = -1;
+        if (rb === null) rb = -1;
+        return rb - ra ||
+          nextTime(groups.get(a)) - nextTime(groups.get(b)) ||
+          S.films[a][1].localeCompare(S.films[b][1]);
+      });
+    } else if (mode === 'near') {
       order.sort(function (a, b) {
         var da = nearestKmOf(groups.get(a));
         var db = nearestKmOf(groups.get(b));
@@ -900,14 +993,27 @@
       g.push(rows[i]);
     }
     var order = Array.from(byCinema.keys());
+    var mode = S.sort;
+    if (mode === 'near' && !S.place) mode = 'soonest';
     order.sort(function (a, b) {
-      if (S.place) {
+      var byName = S.cinemas[a][0].localeCompare(S.cinemas[b][0]);
+      if (mode === 'near') {
         var da = kmTo(a), db = kmTo(b);
         if (da != null || db != null) {
-          return (da == null ? Infinity : da) - (db == null ? Infinity : db);
+          return (da == null ? Infinity : da) - (db == null ? Infinity : db) || byName;
         }
+        return byName;
       }
-      return S.cinemas[a][0].localeCompare(S.cinemas[b][0]);
+      if (mode === 'rating') {
+        var ra = bestRatingOf(byCinema.get(a));
+        var rb = bestRatingOf(byCinema.get(b));
+        if (ra === null) ra = -1;
+        if (rb === null) rb = -1;
+        return rb - ra ||
+          firstMinuteOf(byCinema.get(a)) - firstMinuteOf(byCinema.get(b)) || byName;
+      }
+      if (mode === 'title') return byName;
+      return firstMinuteOf(byCinema.get(a)) - firstMinuteOf(byCinema.get(b)) || byName;
     });
 
     var html = '<div class="films">';
@@ -1037,18 +1143,13 @@
       }
     }
 
-    var poster = film[6]
-      ? '<img class="poster" src="' + esc(film[6]) + '" alt="" loading="lazy" ' +
-        'referrerpolicy="no-referrer" onerror="this.remove()">'
-      : '<span class="poster poster-none" aria-hidden="true">' +
-        esc(film[1].charAt(0).toUpperCase()) + '</span>';
-
+    var poster = posterTile(film, '');
     var filmHref = '#/film/' + encodeURIComponent(film[0]);
     return '<details class="film" data-film="' + filmIdx + '">' +
       '<summary>' + poster +
       '<div class="film-main">' +
         '<h2 class="film-title">' + esc(film[1]) + '</h2>' +
-        '<p class="film-meta">' + esc(meta) + '</p>' +
+        metaLine(film, meta) +
       '</div>' +
       '<div class="film-times">' + times + '</div>' +
       // The film page was only reachable by searching. A card-level arrow is the
@@ -1070,11 +1171,53 @@
       '</div></details>';
   }
 
+  /* A cover is a tile with the fallback letter behind the image: if the remote
+     poster 404s, removing the image reveals the letter instead of a gap. */
+  function initials(title) {
+    var words = String(title || '').replace(/[^\w\s'&-]/g, ' ').split(/\s+/);
+    var keep = [];
+    for (var i = 0; i < words.length && keep.length < 2; i++) {
+      var w = words[i];
+      if (!w || /^(the|a|an|of|and|to|in|for|at|on)$/i.test(w)) continue;
+      keep.push(w.charAt(0).toUpperCase());
+    }
+    return keep.join('') || '?';
+  }
+
+  function posterTile(film, extra) {
+    var cls = 'poster' + (extra ? ' ' + extra : '');
+    var fallback = '<span class="poster-fallback" aria-hidden="true">' +
+      esc(initials(film[1])) + '</span>';
+    if (!film[6]) return '<span class="' + cls + ' poster-none">' + fallback + '</span>';
+    return '<span class="' + cls + '">' + fallback +
+      '<img src="' + esc(film[6]) + '" alt="" loading="lazy" ' +
+      'referrerpolicy="no-referrer" onerror="this.remove()"></span>';
+  }
+
+  /* Scores lead the card's meta line so "Top rated" has something to show for
+     itself without expanding the card. No score means no chip, never a dash. */
+  function metaLine(film, meta) {
+    var bits = [];
+    if (film[10] > 0) {
+      bits.push('<span class="mscore ms-imdb">IMDb ' + film[10].toFixed(1) + '</span>');
+    }
+    if (film[11] != null) {
+      bits.push('<span class="mscore ms-rt">RT ' + film[11] + '%</span>');
+    }
+    if (film[12] > 0) {
+      bits.push('<span class="mscore ms-mc">MC ' + film[12] + '</span>');
+    }
+    var sep = ' <span class="msep">\u00b7</span> ';
+    var html = bits.join(sep);
+    if (meta) html += (html ? sep : '') + '<span class="mrest">' + esc(meta) + '</span>';
+    return '<p class="film-meta">' + html + '</p>';
+  }
+
   /* Ratings, when the build had them. Film row: [.., imdb_id, imdb, rt, mc,
      rt_url, mc_url]. No score means no chip — never a dash or a zero. */
   function scoreChips(film) {
     var chips = '';
-    if (film[10] != null) {
+    if (film[10] > 0) {
       chips += '<a class="score score-imdb" href="https://www.imdb.com/title/' +
         encodeURIComponent(film[9]) + '/" target="_blank" rel="noopener noreferrer"' +
         ' aria-label="IMDb rating ' + film[10] + ' out of 10 (opens IMDb)">' +
@@ -1090,7 +1233,7 @@
         '<span class="score-src">Tomatometer</span><span class="score-val">' +
         film[11] + '%</span></a>';
     }
-    if (film[12] != null) {
+    if (film[12] > 0) {
       var mcHref = film[14] || ('https://www.metacritic.com/search/' +
         encodeURIComponent(film[1]) + '/');
       chips += '<a class="score score-mc" href="' + esc(mcHref) +
@@ -1270,10 +1413,7 @@
     if (film[4]) facts.push(film[4] + ' min');
     if (film[5] && film[5].length) facts.push(film[5].join(', '));
 
-    var poster = film[6]
-      ? '<img class="poster poster-lg" src="' + esc(film[6]) + '" alt="" ' +
-        'referrerpolicy="no-referrer" onerror="this.remove()">'
-      : '';
+    var poster = posterTile(film, 'poster-lg');
 
     var html = '<div class="film-hero">' + poster +
       '<div class="hero-main"><h1>' + esc(film[1]) + '</h1>' +
@@ -1480,6 +1620,8 @@
       if (f[2]) meta.push(f[2]);
       if (f[3]) meta.push(f[3]);
       if (f[4]) meta.push(f[4] + ' min');
+      if (f[10] > 0) meta.push('IMDb ' + f[10].toFixed(1));
+      else if (f[12] > 0) meta.push('MC ' + f[12]);
       html += '<button type="button" class="sug" role="option" id="sug-' + k + '"' +
         ' data-key="' + esc(f[0]) + '" aria-selected="false">' +
         (f[6] ? '<span class="sug-thumb"><img src="' + esc(f[6]) +
@@ -1562,6 +1704,14 @@
     render();
   }
 
+  function onSort(event) {
+    if (event.target.id !== 'sort') return;
+    S.sort = event.target.value;
+    S.sortSaved = true;
+    try { localStorage.setItem('cinemelb-sort', S.sort); } catch (e) { /* private mode */ }
+    render();
+  }
+
   function saveView() {
     try {
       localStorage.setItem('cinemelb-view',
@@ -1606,7 +1756,10 @@
         if (savedView.group) S.group = savedView.group;
         if (savedView.filmGroup) S.filmGroup = savedView.filmGroup;
       }
+      var savedSort = localStorage.getItem('cinemelb-sort');
+      if (savedSort) { S.sort = savedSort; S.sortSaved = true; }
     } catch (e) { /* private mode */ }
+    if (!S.sortSaved && S.place) S.sort = 'near';
 
     var input = document.getElementById('q');
 
@@ -1670,6 +1823,7 @@
     document.getElementById('filters').addEventListener('click', onChip);
     document.getElementById('filters').addEventListener('change', onSelect);
     document.getElementById('main').addEventListener('click', onView);
+    document.getElementById('main').addEventListener('change', onSort);
     document.getElementById('theme').addEventListener('click', onTheme);
     window.addEventListener('hashchange', function () {
       closeSuggest();

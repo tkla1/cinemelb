@@ -145,6 +145,7 @@ def build_bundle(
     synopsis_cap: int = SYNOPSIS_CAP,
     include_urls: bool = True,
     ratings: dict[str, dict] | None = None,
+    posters: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Serialise the store into the index-table bundle the SPA consumes.
 
@@ -153,7 +154,13 @@ def build_bundle(
 
     ``ratings`` is an optional map of film key -> score dict (see
     :mod:`cinemelb.ratings`). Anything missing stays null and the UI omits it.
+
+    ``posters`` is an optional map of film key -> cover entry (see
+    :mod:`cinemelb.posters`). It overrides the venue's own poster URL; when a
+    film has no resolved cover, a known placeholder URL is dropped rather than
+    shipped as the film's face.
     """
+    from .posters import poster_for
     today = datetime.now(MELBOURNE_TZ).date()
     cutoff = (today + timedelta(days=days - 1)).isoformat() if days else None
 
@@ -204,6 +211,7 @@ def build_bundle(
                 urls.append(url)
 
     rating_map = ratings or {}
+    poster_map = posters or {}
 
     cinema_rows = [
         [
@@ -224,26 +232,36 @@ def build_bundle(
     def rating_of(f: dict[str, Any]) -> dict[str, Any]:
         return rating_map.get(f["key"]) or {}
 
-    film_rows = [
-        [
+    film_rows = []
+    for f in films:
+        entry = rating_of(f)
+        imdb = entry.get("imdb")
+        rt = entry.get("rt")
+        mc = entry.get("mc")
+        # Metacritic reports 0 for "no reviews yet" through its backend; a
+        # critic score of literally zero does not exist, and IMDb has no zero
+        # either. Treat both as missing rather than rendering a bogus "MC 0".
+        if imdb == 0:
+            imdb = None
+        if mc == 0:
+            mc = None
+        film_rows.append([
             f["key"],
             f.get("title") or "",
             f.get("year"),
             f.get("rating") or "",
             f.get("runtime_minutes"),
             f.get("genres") or [],
-            f.get("poster_url") or "",
+            poster_for(f, poster_map)[0],
             _truncate(f.get("synopsis") or "", synopsis_cap),
             f.get("trailer_url") or "",
-            rating_of(f).get("imdb_id") or f.get("imdb_id") or "",
-            rating_of(f).get("imdb"),
-            rating_of(f).get("rt"),
-            rating_of(f).get("mc"),
-            rating_of(f).get("rt_url") or "",
-            rating_of(f).get("mc_url") or "",
-        ]
-        for f in films
-    ]
+            entry.get("imdb_id") or f.get("imdb_id") or "",
+            imdb,
+            rt,
+            mc,
+            entry.get("rt_url") or "",
+            entry.get("mc_url") or "",
+        ])
 
     film_index = {f["key"]: i for i, f in enumerate(films)}
     cinema_index = {c["id"]: i for i, c in enumerate(cinemas)}
@@ -288,6 +306,7 @@ def build_bundle(
             "dates": len(dates),
             "urls": len(urls),
             "rated": sum(1 for row in film_rows if row[10] is not None),
+            "posters": sum(1 for row in film_rows if row[6]),
         },
         "cinemas": cinema_rows,
         "films": film_rows,
