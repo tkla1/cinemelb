@@ -148,6 +148,20 @@ existing rows and moves their screenings. Result: 45 prefixed titles cleaned,
 390 films after 3 merges, 0 orphans, 0 duplicates, and the ratings cache still
 resolves because its keys were already prefix-free.
 
+**Spec-driven UI harness (26 Nov).** `SPEC.md` is now the authoritative UI spec
+(problem, constraints, data contracts, required states, 30 acceptance criteria,
+decision log, phase plan). It was produced with the reusable
+`spec-driven-design` skill and the prior design-tooling research. Phase 1 is
+complete: `cinemelb/web/tokens.json` -> generated block in `app.css` (25 tokens,
+`scripts/build_tokens.py`), `components.json` (18 components), `gallery.html`
+driven by the real `window.CINEMELB.render` functions, and the T0/T1 checks
+(`check_tokens`, `check_contrast`, `check_manifest`, `check_bundle`,
+`check_budget`). All phase-1 checks are green: bundle 234.4 KB gz, JS 21.3 KB gz,
+CSS 6.7 KB gz, HTML 1.8 KB gz; text contrast 4.5:1 in both themes; border
+contrast is a recorded phase-3 warning (D-010). Score colours and focus rings
+moved from literals to tokens; `--text-3` was raised to meet AA. `components.json`
+is the agent's index; screenshots are now reserved for appearance questions.
+
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 

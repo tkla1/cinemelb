@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en-AU" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cinemelb — component gallery</title>
+<script>
+/* The gallery drives hydration itself; app.js must not boot the SPA. */
+window.__CINEMELB_GALLERY__ = true;
+try {
+  var q = new URLSearchParams(location.search).get('theme');
+  document.documentElement.dataset.theme = q === 'light' ? 'light' : 'dark';
+} catch (e) {}
+</script>
+<link rel="stylesheet" href="./app.css">
+<style>
+  body { background: var(--bg); }
+  .g-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px 80px; }
+  .g-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+  .g-top h1 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+  .g-top p { margin: 0; color: var(--text-3); font-size: 13px; }
+  .g-top .g-actions { margin-left: auto; display: flex; gap: 8px; }
+  .g-section { margin: 0 0 30px; padding: 0 0 26px; border-bottom: 1px solid var(--line); }
+  .g-section:last-child { border-bottom: 0; }
+  .g-section h2 { margin: 0 0 4px; font-size: 15px; }
+  .g-section h2 code { color: var(--accent-2); font-size: 12px; }
+  .g-note { margin: 0 0 12px; color: var(--text-3); font-size: 12.5px; }
+  .g-stage { padding: 14px; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--bg-2); }
+  .g-stage .rail { position: static; padding: 0; border: 0; background: transparent; }
+  .g-stage .filters { padding: 0; }
+  .g-stage .suggest { position: static; margin-top: 6px; }
+  .g-stage .search { max-width: 420px; }
+  .g-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+    gap: 16px 12px; }
+  .g-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+  .g-planned { color: var(--text-3); font-size: 13px; font-style: italic; }
+  @media (max-width: 640px) { .g-wrap { padding: 16px 12px 60px; } }
+</style>
+</head>
+<body>
+<div class="g-wrap">
+  <header class="g-top">
+    <h1>cinemelb component gallery</h1>
+    <p>Rendered through <code>window.CINEMELB.render</code> from
+      <code>components.json</code>; serve the repo root and open this page.</p>
+    <div class="g-actions">
+      <button class="icon-btn" id="g-theme" type="button" title="Switch theme"
+              aria-label="Switch colour theme">◐</button>
+      <a class="btn" href="../dist/">Open built app</a>
+    </div>
+  </header>
+
+  <section class="g-section" id="app-header" data-component="app-header">
+    <h2>app-header <code>#app-header</code></h2>
+    <p class="g-note">Shipped shell markup lives in <code>cinemelb/web/index.html</code>;
+      formal render extraction is phase 4.</p>
+    <div class="g-stage g-planned">Brand, search box, clock, theme toggle (site header).</div>
+  </section>
+
+  <section class="g-section" id="day-rail" data-component="day-rail">
+    <h2>day-rail <code>#day-rail</code></h2>
+    <p class="g-note">14-day rail; the current day carries <code>aria-current="date"</code>.</p>
+    <div class="g-stage"><nav class="rail" id="rail" aria-label="Choose a day"></nav></div>
+  </section>
+
+  <section class="g-section" id="filter-bar" data-component="filter-bar">
+    <h2>filter-bar <code>#filter-bar</code></h2>
+    <p class="g-note">Chips + native selects; hidden on the search route.</p>
+    <div class="g-stage"><div class="filters" id="filters"></div></div>
+  </section>
+
+  <section class="g-section" id="view-bar" data-component="view-bar">
+    <h2>view-bar <code>#view-bar</code></h2>
+    <p class="g-note">Grouping + sort + List/Grid layout toggle.</p>
+    <div class="g-stage" id="g-view-bar"></div>
+  </section>
+
+  <section class="g-section" id="film-card" data-component="film-card">
+    <h2>film-card <code>#film-card</code></h2>
+    <p class="g-note">Collapsed and expanded, with scores and time pills.</p>
+    <div class="g-stage" id="g-film-card"></div>
+  </section>
+
+  <section class="g-section" id="poster-tile" data-component="poster-tile">
+    <h2>poster-tile <code>#poster-tile</code></h2>
+    <p class="g-note">Cover and initials fallback.</p>
+    <div class="g-stage"><div class="poster-grid" id="g-poster-tile"></div></div>
+  </section>
+
+  <section class="g-section" id="poster-grid" data-component="poster-grid">
+    <h2>poster-grid <code>#poster-grid</code></h2>
+    <p class="g-note">The browsing layout: one tile per film, three columns on a phone.</p>
+    <div class="g-stage"><div class="poster-grid" id="g-poster-grid"></div></div>
+  </section>
+
+  <section class="g-section" id="score-chip" data-component="score-chip">
+    <h2>score-chip <code>#score-chip</code></h2>
+    <p class="g-note">Linked chips on the film page; inline score text on cards.</p>
+    <div class="g-stage" id="g-score-chip"></div>
+  </section>
+
+  <section class="g-section" id="session-pill" data-component="session-pill">
+    <h2>session-pill <code>#session-pill</code></h2>
+    <p class="g-note">Linked, no-URL, sold-out and soon variants from real rows.</p>
+    <div class="g-stage"><div class="sessions" id="g-session-pill"></div></div>
+  </section>
+
+  <section class="g-section" id="venue-block" data-component="venue-block">
+    <h2>venue-block <code>#venue-block</code></h2>
+    <p class="g-note">Venue name, address, Directions/Tickets/Website/phone, sessions.</p>
+    <div class="g-stage" id="g-venue-block"></div>
+  </section>
+
+  <section class="g-section" id="cinema-card" data-component="cinema-card">
+    <h2>cinema-card <code>#cinema-card</code></h2>
+    <p class="g-note">Day grouped by venue.</p>
+    <div class="g-stage" id="g-cinema-card"></div>
+  </section>
+
+  <section class="g-section" id="time-section" data-component="time-section">
+    <h2>time-section <code>#time-section</code></h2>
+    <p class="g-note">Morning / afternoon / evening / late night buckets.</p>
+    <div class="g-stage" id="g-time-section"></div>
+  </section>
+
+  <section class="g-section" id="search-suggest" data-component="search-suggest">
+    <h2>search-suggest <code>#search-suggest</code></h2>
+    <p class="g-note">Six quick hits plus "See all N results"; keyboard-selected state.</p>
+    <div class="g-stage">
+      <div class="search">
+        <input id="q" type="search" value="dune" readonly aria-label="Search query">
+        <div class="suggest" id="suggest" role="listbox" aria-label="Film suggestions"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="g-section" id="near-bar" data-component="near-bar">
+    <h2>near-bar <code>#near-bar</code></h2>
+    <p class="g-note">Location form; render extraction planned for phase 3.</p>
+    <div class="g-stage g-planned">Near me · suburb/address · status line · Clear.</div>
+  </section>
+
+  <section class="g-section" id="film-hero" data-component="film-hero">
+    <h2>film-hero <code>#film-hero</code></h2>
+    <p class="g-note">Film page hero; render extraction planned for phase 6.</p>
+    <div class="g-stage g-planned">Poster · title · facts · trailers · score chips.</div>
+  </section>
+
+  <section class="g-section" id="empty-state" data-component="empty-state">
+    <h2>empty-state <code>#empty-state</code></h2>
+    <p class="g-note">No sessions / day over / filters hid N / no search results.</p>
+    <div class="g-stage g-planned">Empty state copy with a clear or browse action.</div>
+  </section>
+
+  <section class="g-section" id="error-panel" data-component="error-panel">
+    <h2>error-panel <code>#error-panel</code></h2>
+    <p class="g-note">HTTP, Content-Type and JSON failures.</p>
+    <div class="g-stage g-planned">Error panel with the failing request and a retry hint.</div>
+  </section>
+
+  <section class="g-section" id="loading" data-component="loading">
+    <h2>loading <code>#loading</code></h2>
+    <p class="g-note">First paint only.</p>
+    <div class="g-stage">
+      <div class="loading">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Loading showtimes…</p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="./app.js"></script>
+<script>
+(function () {
+  'use strict';
+  var theme = document.getElementById('g-theme');
+  if (theme) {
+    theme.addEventListener('click', function () {
+      var root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
+    });
+  }
+
+  function fail(message) {
+    var box = document.getElementById('g-film-card');
+    if (box) {
+      box.innerHTML = '<p class="g-planned">' + message + '</p>';
+    }
+  }
+
+  fetch('../../dist/data/bundle.json')
+    .then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    })
+    .then(function (bundle) {
+      var C = window.CINEMELB;
+      if (!C) throw new Error('window.CINEMELB missing');
+      C.hydrate(bundle, true);
+      var S = C.state;
+      var today = S.today;
+      var rows = (S.byDate.get(today) || []).slice();
+      if (!rows.length) throw new Error('no sessions in today\'s bundle slice');
+
+      function rowsFor(filmIdx) {
+        return rows.filter(function (r) { return S.rowFilm[r] === filmIdx; });
+      }
+      function score(film) {
+        return (film[10] || 0) + (film[12] || 0) / 10;
+      }
+      var filmIdxs = [];
+      var seen = {};
+      rows.forEach(function (r) {
+        var idx = S.rowFilm[r];
+        if (!seen[idx]) { seen[idx] = 1; filmIdxs.push(idx); }
+      });
+      filmIdxs.sort(function (a, b) {
+        return score(S.films[b]) - score(S.films[a]);
+      });
+      var withPoster = filmIdxs.filter(function (i) { return !!S.films[i][6]; });
+      var withoutPoster = filmIdxs.filter(function (i) { return !S.films[i][6]; });
+      var hero = withPoster[0] || filmIdxs[0];
+
+      // View bar
+      var view = document.getElementById('g-view-bar');
+      if (view) view.innerHTML = C.render.viewBar('day');
+
+      // Film card: collapsed and expanded
+      var cardBox = document.getElementById('g-film-card');
+      if (cardBox) {
+        var cardRows = rowsFor(hero);
+        var collapsed = C.render.filmCard(hero, cardRows);
+        // The expanded body lists every venue; three is enough for the gallery
+        // and keeps the section readable.
+        var sample = [];
+        var seenCinema = {};
+        cardRows.forEach(function (r) {
+          var cid = S.rowCinema[r];
+          if (!seenCinema[cid] && sample.length < 3) {
+            seenCinema[cid] = 1;
+            sample.push(r);
+          }
+        });
+        var open = C.render.filmCard(hero, sample).replace(
+          '<details class="film"', '<details class="film" open');
+        cardBox.innerHTML = '<div class="films">' + collapsed + open + '</div>';
+      }
+
+      // Poster tiles: cover + fallback
+      var tileBox = document.getElementById('g-poster-tile');
+      if (tileBox) {
+        tileBox.innerHTML =
+          C.render.filmTile(withPoster[0], rowsFor(withPoster[0]), true) +
+          (withoutPoster.length
+            ? C.render.filmTile(withoutPoster[0], rowsFor(withoutPoster[0]), true)
+            : '');
+      }
+
+      // Poster grid
+      var gridBox = document.getElementById('g-poster-grid');
+      if (gridBox) {
+        var picks = withPoster.slice(0, 8);
+        gridBox.innerHTML = picks.map(function (idx) {
+          return C.render.filmTile(idx, rowsFor(idx), true);
+        }).join('');
+      }
+
+      // Score chips
+      var scoreBox = document.getElementById('g-score-chip');
+      if (scoreBox) scoreBox.innerHTML = C.render.scoreChips(S.films[hero]);
+
+      // Session pills: a sample across venues
+      var sessionBox = document.getElementById('g-session-pill');
+      if (sessionBox) sessionBox.innerHTML = C.render.sessions(rows.slice(0, 8));
+
+      // Venue blocks: up to three distinct venues
+      var venueBox = document.getElementById('g-venue-block');
+      if (venueBox) {
+        var venueRows = [];
+        var cinemas = {};
+        rows.forEach(function (r) {
+          var c = S.rowCinema[r];
+          if (!cinemas[c] && venueRows.length < 3) {
+            cinemas[c] = 1;
+            venueRows.push(r);
+          }
+        });
+        venueBox.innerHTML = C.render.venueBlocks(venueRows);
+      }
+
+      // Cinema card
+      var cinemaBox = document.getElementById('g-cinema-card');
+      if (cinemaBox) {
+        var first = rows[0];
+        var cid = S.rowCinema[first];
+        var crows = rows.filter(function (r) { return S.rowCinema[r] === cid; });
+        cinemaBox.innerHTML = '<div class="films">' +
+          C.render.cinemaCard(cid, crows) + '</div>';
+      }
+
+      // Time sections
+      var timeBox = document.getElementById('g-time-section');
+      if (timeBox) timeBox.innerHTML = C.render.dayByTime(rows);
+
+      // Rail + filters write into their own elements.
+      C.render.rail();
+      C.render.filters();
+
+      // Suggestions write into #suggest.
+      C.render.suggest('dune');
+    })
+    .catch(function (error) {
+      fail('Gallery needs a built bundle: ' + error.message +
+           '. Run `uv run python -m cinemelb export --out dist` and serve the repo root.');
+    });
+})();
+</script>
+</body>
+</html>

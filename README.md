@@ -182,13 +182,17 @@ Deploying it is one command, after a refresh so the times are current:
 python -m cinemelb refresh
 python -m cinemelb ratings
 python -m cinemelb posters
+uv run python scripts/build_tokens.py --check
 python -m cinemelb export --out dist
+uv run python scripts/check_bundle.py --titles --against-db
 npx wrangler pages deploy dist --project-name cinemelb --branch main
 ```
 
 `dist/` is generated, not committed: the bundle is a build artifact of whatever
 is in `data/cinemelb.sqlite3` at the time. `cinemelb/web/` is the source shell
-(`index.html`, `app.css`, `app.js`, `_headers`).
+(`index.html`, `app.css`, `app.js`, `_headers`, `tokens.json`, `gallery.html`);
+`components.json` is the component manifest at the repo root. UI work is governed
+by `SPEC.md`.
 
 The bundle is index-table shaped. A screening is nine integers pointing into
 shared tables (date, film, minute, cinema, format, attribute set, sold-out,
@@ -285,6 +289,20 @@ candidate whose id is the one the ratings pass already resolved. A film with no
 confident match keeps its venue poster when that poster is real, and otherwise
 gets a typographic tile in the UI. The image is requested at 300×444, so a
 cover costs ~16 KB and the full-size original is never downloaded.
+
+**Design system and spec.** `SPEC.md` is the authoritative UI spec: constraints,
+data contracts, required states, acceptance criteria, decision log and phase plan.
+Visual values live in `cinemelb/web/tokens.json`; `scripts/build_tokens.py` writes
+the generated block at the top of `app.css` (run with `--check` to fail on drift).
+`components.json` is the component manifest; `cinemelb/web/gallery.html` renders
+those components by calling the app's own render functions through
+`window.CINEMELB.render` (serve the repo root and open
+`/cinemelb/web/gallery.html`). The verification ladder is
+`scripts/check_tokens.py --coverage --literals --motion`,
+`check_contrast.py`, `check_manifest.py`,
+`check_bundle.py --titles --against-db`, `check_budget.py dist`, then the unit
+suite. Structural questions use DOM/aria checks; screenshots are only for
+appearance questions.
 
 `_headers` gives the hashed assets a one-year immutable cache and the bundle
 five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare

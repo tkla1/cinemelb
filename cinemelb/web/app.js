@@ -92,6 +92,8 @@
     sortSaved: false,   // has the user chosen a sort explicitly?
     layout: 'list',    // day view: 'list' | 'grid' (grid = poster tiles)
     searchSort: 'relevance',  // search view: 'relevance' | 'rating' | 'title'
+    routeKey: '',      // last route, for moving focus only on navigation
+    renderedOnce: false,
     place: null,       // { name, lat, lon, source } once a location is set
     route: { name: 'day', date: null, film: null, q: null },
     chains: []
@@ -565,11 +567,15 @@
       var bundle;
       try { bundle = JSON.parse(xhr.responseText); }
       catch (e) { return fail('The data file is not valid JSON: ' + e.message); }
-      index(bundle);
-      render();
+      hydrate(bundle);
     };
     xhr.onerror = function () { fail('Could not reach the data file.'); };
     xhr.send();
+  }
+
+  function hydrate(bundle, skipRender) {
+    index(bundle);
+    if (!skipRender) render();
   }
 
   function index(bundle) {
@@ -708,6 +714,8 @@
     // reading S.route before it is refreshed left the highlight one click behind.
     var route = parseRoute();
     S.route = route;
+    var routeKey = route.name + '|' + (route.film || route.q || route.date || '');
+    var changed = routeKey !== S.routeKey;
     renderRail();
     renderFilters();
     // The search page is about films, not sessions; the session filters and
@@ -720,6 +728,22 @@
     if (route.name === 'film') renderFilm(main, route.film);
     else if (route.name === 'search') renderSearch(main, route.q);
     else renderDay(main, route.date);
+
+    S.routeKey = routeKey;
+    // Move focus to the new page's heading on navigation, not on every filter
+    // re-render. A screen reader should start at the new content.
+    if (changed && S.renderedOnce) {
+      var heading = main.querySelector('h1');
+      try {
+        if (heading) {
+          heading.setAttribute('tabindex', '-1');
+          heading.focus({ preventScroll: true });
+        } else {
+          main.focus({ preventScroll: true });
+        }
+      } catch (e) { /* focus options unsupported */ }
+    }
+    S.renderedOnce = true;
   }
 
   function parseRoute() {
@@ -820,8 +844,8 @@
      is visible without expanding a card. */
   function viewBar(kind) {
     var options = kind === 'film'
-      ? [['day', 'By day'], ['cinema', 'By cinema'], ['time', 'By time']]
-      : [['film', 'By film'], ['cinema', 'By cinema'], ['time', 'By time']];
+      ? [['day', 'Days'], ['cinema', 'Cinemas'], ['time', 'Times']]
+      : [['film', 'Films'], ['cinema', 'Cinemas'], ['time', 'Times']];
     var current = kind === 'film' ? S.filmGroup : S.group;
     var html = '<div class="view-bar" role="group" aria-label="Group sessions">';
     for (var i = 0; i < options.length; i++) {
@@ -910,7 +934,7 @@
     var head = '<div class="day-head">' +
       '<h1>' + esc(longDay(dayIso)) + '</h1>' +
       (rel ? '<span class="badge">' + esc(rel) + '</span>' : '') +
-      '<span class="count">' + films.size + ' film' + (films.size === 1 ? '' : 's') +
+      '<span class="count" aria-live="polite">' + films.size + ' film' + (films.size === 1 ? '' : 's') +
       '<span class="count-sessions"> · ' + rows.length + ' session' +
       (rows.length === 1 ? '' : 's') + '</span></span>' + viewBar('day') + '</div>';
 
@@ -966,7 +990,7 @@
     var results = searchMatches(lower, 2000);
     var head = '<div class="day-head search-head">' +
       '<h1>Results for \u201c' + esc(q) + '\u201d</h1>' +
-      '<span class="count">' + results.length + ' film' +
+      '<span class="count" aria-live="polite">' + results.length + ' film' +
       (results.length === 1 ? '' : 's') + '</span>' +
       (results.length ? '<div class="view-row">' + searchSortSelect() + '</div>' : '') +
       '</div>';
@@ -1635,7 +1659,7 @@
       return;
     }
 
-    html += '<div class="section-head"><h2>All sessions</h2><span class="count">' +
+    html += '<div class="section-head"><h2>All sessions</h2><span class="count" aria-live="polite">' +
       rows.length + ' across ' + dayOrder.length + ' day' +
       (dayOrder.length === 1 ? '' : 's') + '</span>' + viewBar('film') + '</div>';
 
@@ -2092,6 +2116,40 @@
     loadBundle();
   }
 
+  // ------------------------------------------------------- design harness
+  // Frozen access for cinemelb/web/gallery.html: the gallery calls the same
+  // render functions the app calls, so it cannot drift from the shipped markup.
+  if (typeof window !== 'undefined') {
+    window.CINEMELB = Object.freeze({
+      version: 2,
+      hydrate: hydrate,
+      state: S,
+      render: Object.freeze({
+        filmCard: filmCard,
+        filmTile: filmTile,
+        posterTile: posterTile,
+        scoreChips: scoreChips,
+        scoreBits: scoreBits,
+        sessions: sessions,
+        venueBlocks: venueBlocks,
+        cinemaCard: cinemaCard,
+        dayByTime: dayByTime,
+        viewBar: viewBar,
+        rail: renderRail,
+        filters: renderFilters,
+        suggest: renderSuggest,
+        film: renderFilm,
+        search: renderSearch,
+        day: renderDay
+      })
+    });
+  }
+
+  // The gallery sets this flag before loading app.js and drives hydrate()
+  // itself, with a bundle it fetches from the built dist directory.
+  if (typeof window !== 'undefined' && window.__CINEMELB_GALLERY__) {
+    return;
+  }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot);
   } else {

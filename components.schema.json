@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cinemelb component manifest",
+  "type": "object",
+  "required": ["version", "updated", "components"],
+  "properties": {
+    "version": {"const": 1},
+    "updated": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "status", "source", "render", "gallery",
+                     "states", "tokens"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+          "name": {"type": "string"},
+          "status": {"enum": ["stable", "beta", "deprecated", "planned"]},
+          "source": {"type": "string"},
+          "render": {"type": "string"},
+          "gallery": {"type": "string", "pattern": "gallery\\.html#"},
+          "props": {"type": "array"},
+          "states": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "tokens": {"type": "array", "items": {"type": "string", "pattern": "^--"}},
+          "a11y": {"type": "object"},
+          "examples": {"type": "array", "items": {"type": "string"}},
+          "since": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
