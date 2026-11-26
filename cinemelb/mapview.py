@@ -12,12 +12,12 @@ data is embedded, so it opens instantly and never calls back to this tool.
 from __future__ import annotations
 
 import html
-import json
 from datetime import datetime
 from pathlib import Path
 
 from .geo import format_distance
 from .models import MELBOURNE_TZ
+from .sanitize import json_for_script, safe_href
 
 _TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
@@ -25,7 +25,10 @@ _TEMPLATE = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin="anonymous">
 <style>
   :root {{ color-scheme: dark; }}
   * {{ box-sizing: border-box; }}
@@ -59,7 +62,9 @@ _TEMPLATE = """<!DOCTYPE html>
   <div class="sub">{subtitle}</div>
   <div id="venues"></div>
 </aside>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+        crossorigin="anonymous"></script>
 <script>
 const DATA = {data_json};
 
@@ -156,7 +161,7 @@ def _venue_payload(hits, origin, radius_km) -> dict:
             "date_short": f"{d:%a}",
             "film": h.film,
             "format": h.screening.get("format", ""),
-            "ticket_url": h.screening.get("ticket_url", ""),
+            "ticket_url": safe_href(h.screening.get("ticket_url", "")),
         })
 
     for entry in grouped.values():
@@ -195,7 +200,7 @@ def render(hits, *, title: str, subtitle: str = "", origin=None,
     html_text = _TEMPLATE.format(
         title=html.escape(title),
         subtitle=html.escape(subtitle),
-        data_json=json.dumps(payload, ensure_ascii=False, default=str),
+        data_json=json_for_script(payload),
     )
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)

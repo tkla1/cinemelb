@@ -33,6 +33,7 @@ from typing import Any
 
 from .models import MELBOURNE_TZ
 from .geo import known_places
+from .sanitize import safe_href
 from .store import Store
 
 #: The static shell shipped alongside the bundle.
@@ -205,7 +206,10 @@ def build_bundle(
     url_index: dict[str, int] = {}
     if include_urls:
         for r in rows:
-            url = (r.get("ticket_url") or "").strip()
+            # The bundle is the trust boundary between scraped data and the
+            # browser: only http(s) links enter it, so no renderer can be the
+            # single point of failure for a javascript: URL.
+            url = safe_href(r.get("ticket_url"))
             if url and url not in url_index:
                 url_index[url] = len(urls)
                 urls.append(url)
@@ -219,12 +223,12 @@ def build_bundle(
             c.get("chain") or "",
             c.get("suburb") or "",
             c.get("address") or "",
-            c.get("website") or "",
+            safe_href(c.get("website")),
             c.get("tags") or [],
             round(float(c["latitude"]), 5) if c.get("latitude") is not None else None,
             round(float(c["longitude"]), 5) if c.get("longitude") is not None else None,
             c.get("phone") or "",
-            c.get("booking_url") or "",
+            safe_href(c.get("booking_url")),
         ]
         for c in cinemas
     ]
@@ -252,9 +256,9 @@ def build_bundle(
             f.get("rating") or "",
             f.get("runtime_minutes"),
             f.get("genres") or [],
-            poster_for(f, poster_map)[0],
+            safe_href(poster_for(f, poster_map)[0]),
             _truncate(f.get("synopsis") or "", synopsis_cap),
-            f.get("trailer_url") or "",
+            safe_href(f.get("trailer_url")),
             entry.get("imdb_id") or f.get("imdb_id") or "",
             imdb,
             rt,
@@ -266,6 +270,20 @@ def build_bundle(
     film_index = {f["key"]: i for i, f in enumerate(films)}
     cinema_index = {c["id"]: i for i, c in enumerate(cinemas)}
 
+    # Published strings that differ from the cleaned title (programme prefixes,
+    # venue spellings). Search matches them, so "BFF26" still finds the film it
+    # was listed under, while the catalogue keeps one row per film.
+    aliases: dict[str, list[str]] = {}
+    for f in films:
+        title_key = " ".join(str(f.get("title") or "").split()).casefold()
+        values: list[str] = []
+        for item in f.get("aka") or []:
+            text = " ".join(str(item).split())
+            if text and text.casefold() != title_key and text not in values:
+                values.append(text)
+        if values:
+            aliases[f["key"]] = values
+
     screening_rows: list[list[int]] = []
     for r in rows:
         screening_rows.append([
@@ -276,7 +294,7 @@ def build_bundle(
             format_index[r.get("format") or ""],
             attr_index["|".join(_canonical_attrs(r.get("attributes")))],
             1 if r.get("sold_out") else 0,
-            url_index.get((r.get("ticket_url") or "").strip(), -1),
+            url_index.get(safe_href(r.get("ticket_url")), -1),
             screen_index[r.get("screen") or ""],
         ])
 
@@ -297,7 +315,7 @@ def build_bundle(
     ]
 
     bundle: dict[str, Any] = {
-        "version": 2,
+        "version": 3,
         "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "counts": {
             "cinemas": len(cinemas),
@@ -310,6 +328,7 @@ def build_bundle(
         },
         "cinemas": cinema_rows,
         "films": film_rows,
+        "aliases": aliases,
         "screenings": screening_rows,
         "dates": dates,
         "formats": formats,
@@ -324,7 +343,7 @@ def build_bundle(
 
 def _validate(bundle: dict[str, Any]) -> None:
     """Fail loudly on a dangling index rather than shipping a broken deploy."""
-    if bundle.get("version") != 2:
+    if bundle.get("version") != 3:
         raise SystemExit(f"unexpected bundle version {bundle.get('version')!r}")
     if not bundle.get("places"):
         raise SystemExit("bundle has no places table — the SPA cannot geocode")
@@ -346,6 +365,21 @@ def _validate(bundle: dict[str, Any]) -> None:
             raise SystemExit(f"film row {i} RT score {rt!r} outside 0..100")
         if mc is not None and not 0 <= mc <= 100:
             raise SystemExit(f"film row {i} Meta score {mc!r} outside 0..100")
+
+    film_keys = {row[0] for row in bundle["films"]}
+    aliases = bundle.get("aliases")
+    if not isinstance(aliases, dict):
+        raise SystemExit("bundle has no aliases map")
+    for key, values in aliases.items():
+        if key not in film_keys:
+            raise SystemExit(f"alias key {key!r} is not an exported film")
+        if not isinstance(values, list) or not values:
+            raise SystemExit(f"alias list for {key!r} is empty or not a list")
+        for value in values:
+            if not isinstance(value, str) or not value.strip():
+                raise SystemExit(f"alias for {key!r} is not a non-empty string")
+            if len(value) > 160:
+                raise SystemExit(f"alias for {key!r} is longer than 160 characters")
 
     limits = {
         0: len(bundle["dates"]),
@@ -372,38 +406,69 @@ def _validate(bundle: dict[str, Any]) -> None:
             raise SystemExit(f"screening row {i} sold flag {row[6]} is not 0/1")
 
 
-def write_site(bundle: dict[str, Any], out_dir: Path | str) -> Path:
-    """Write the deployable static site into ``out_dir``."""
-    out = Path(out_dir).resolve()
+#: Marker written into every site this tool builds.  Its presence is the only
+#: authority to replace an existing directory: ``export`` must never be able to
+#: delete a hand-maintained folder because someone typed ``--out`` next to it.
+SITE_MARKER = ".cinemelb-site"
+
+
+def _guard_out(out: Path, *, force: bool) -> Path:
+    """Return the resolved output path, or refuse with a reason."""
+    if out.parent == out:                      # C:\ or /
+        raise SystemExit(f"refusing a filesystem root: {out}")
     cwd = Path.cwd().resolve()
     if out == cwd or out in cwd.parents:
         raise SystemExit(f"refusing to write the site over {out}")
+    if out.exists() and not force and not (out / SITE_MARKER).exists():
+        raise SystemExit(
+            f"refusing to replace {out}: it is not a cinemelb site "
+            f"(no {SITE_MARKER}); pass --force if you are sure"
+        )
+    return out
 
-    if out.exists():
-        shutil.rmtree(out)
-    (out / "assets").mkdir(parents=True)
-    (out / "data").mkdir(parents=True)
+
+def write_site(bundle: dict[str, Any], out_dir: Path | str, *,
+               force: bool = False) -> Path:
+    """Write the deployable static site into ``out_dir``.
+
+    The site is built in a sibling ``.building`` directory and only then moved
+    into place, so a failed export cannot leave a half-written site - and an
+    existing directory is removed only after the replacement is complete.
+    """
+    out = _guard_out(Path(out_dir).resolve(), force=force)
+    build = out.with_name(out.name + ".building")
+    if build.exists():
+        shutil.rmtree(build)
+    (build / "assets").mkdir(parents=True)
+    (build / "data").mkdir(parents=True)
 
     css = (WEB_DIR / "app.css").read_bytes()
     js = (WEB_DIR / "app.js").read_bytes()
     css_name = _hashed("app.css", css)
     js_name = _hashed("app.js", js)
-    (out / "assets" / css_name).write_bytes(css)
-    (out / "assets" / js_name).write_bytes(js)
+    (build / "assets" / css_name).write_bytes(css)
+    (build / "assets" / js_name).write_bytes(js)
 
     html = (WEB_DIR / "index.html").read_text(encoding="utf-8")
     html = html.replace("./assets/app.css", f"./assets/{css_name}")
     html = html.replace("./assets/app.js", f"./assets/{js_name}")
-    (out / "index.html").write_text(html, encoding="utf-8")
+    (build / "index.html").write_text(html, encoding="utf-8")
 
     headers = WEB_DIR / "_headers"
     if headers.exists():
-        shutil.copyfile(headers, out / "_headers")
+        shutil.copyfile(headers, build / "_headers")
 
     payload = json.dumps(bundle, separators=(",", ":"), ensure_ascii=False)
-    (out / "data" / "bundle.json").write_text(payload, encoding="utf-8")
+    (build / "data" / "bundle.json").write_text(payload, encoding="utf-8")
 
-    (out / "robots.txt").write_text(
+    (build / "robots.txt").write_text(
         "User-agent: *\nAllow: /\n", encoding="utf-8"
     )
+    (build / SITE_MARKER).write_text(
+        json.dumps({"site": "cinemelb", "version": 1}) + "\n", encoding="utf-8"
+    )
+
+    if out.exists():
+        shutil.rmtree(out)
+    build.rename(out)
     return out

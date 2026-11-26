@@ -589,6 +589,9 @@
     S.bundle = bundle;
     S.cinemas = bundle.cinemas;
     S.films = bundle.films;
+    // Published aliases (aka) keyed by film key, so a programme code from a
+    // listing still finds the cleaned film. Optional for older bundles.
+    S.aliases = bundle.aliases || {};
 
     // A session after midnight belongs to the previous listing day: the 00:31
     // on the 27th is the 26th's late-night session. Shift those rows onto the
@@ -1790,21 +1793,37 @@
   // ---------------------------------------------------------------- search
   var sugIndex = -1;
 
-  /* Title search, ranked the way a person types: exact, then a prefix, then a
-     word start, then anywhere. Films come back in the bundle's own order for
-     equal scores, so the list is stable between keystrokes. */
+  /* How well one string matches: exact, then a prefix, then a word start, then
+     anywhere, then punctuation-insensitive. -1 means no match. */
+  function matchScore(haystack, q) {
+    if (haystack === q) return 100;
+    if (haystack.indexOf(q) === 0) return 80;
+    if (haystack.indexOf(' ' + q) > 0) return 70;
+    if (haystack.indexOf(q) > 0) return 60;
+    if (haystack.replace(/[^a-z0-9 ]/g, '').indexOf(q) >= 0) return 40;
+    return -1;
+  }
+
+  /* Title search, ranked the way a person types. Published aliases are
+     searched too, at a lower weight: "BFF26" finds the film it was listed
+     under, but a real title match always outranks an alias. Films come back
+     in the bundle's own order for equal scores, so the list is stable between
+     keystrokes. */
   function searchMatches(q, limit) {
     var out = [];
     for (var i = 0; i < S.films.length; i++) {
       var title = S.films[i][1];
-      var lower = title.toLowerCase();
-      var score = -1;
-      if (lower === q) score = 100;
-      else if (lower.indexOf(q) === 0) score = 80;
-      else if (lower.indexOf(' ' + q) > 0) score = 70;
-      else if (lower.indexOf(q) > 0) score = 60;
-      else if (lower.replace(/[^a-z0-9 ]/g, '').indexOf(q) >= 0) score = 40;
-      if (score >= 0) out.push({ i: i, score: score, title: title });
+      var score = matchScore(title.toLowerCase(), q);
+      var aliasHit = '';
+      var aliases = S.aliases[S.films[i][0]] || [];
+      for (var a = 0; a < aliases.length; a++) {
+        var aliasScore = matchScore(String(aliases[a]).toLowerCase(), q);
+        if (aliasScore >= 0 && aliasScore - 25 > score) {
+          score = aliasScore - 25;
+          aliasHit = aliases[a];
+        }
+      }
+      if (score >= 0) out.push({ i: i, score: score, title: title, alias: aliasHit });
     }
     out.sort(function (a, b) {
       return b.score - a.score || a.title.localeCompare(b.title);
@@ -1849,6 +1868,7 @@
       if (f[4]) meta.push(f[4] + ' min');
       if (f[10] > 0) meta.push('IMDb ' + f[10].toFixed(1));
       else if (f[12] > 0) meta.push('MC ' + f[12]);
+      if (list[k].alias) meta.push('listed as ' + list[k].alias);
       // role="option" belongs on a non-interactive element in the combobox
       // pattern: focus stays in the input and aria-activedescendant names the
       // row. A <button> here would put a control inside an option.

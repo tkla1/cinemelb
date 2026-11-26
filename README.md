@@ -232,7 +232,10 @@ the film page; grid/list is remembered with the grouping. Enter in the header
 search now opens a full results page (`#/search/<query>`) instead of jumping to
 the first title: every match becomes a poster tile, ranked by match, with
 **Best match / Top rated / Title A–Z** sorting. The dropdown remains a six-item
-shortcut and ends with a **See all N results** row into the same grid.
+shortcut and ends with a **See all N results** row into the same grid. Search also
+matches the published listing title: `BFF26` finds *500 Miles*, and the
+suggestion says "listed as BFF26 500 Miles"; a real title match still ranks first.
+Those strings ship in the bundle's `aliases` map (bundle v3).
 
 The time-of-day sections collapse: click a heading to fold that part of the day
 away, which makes "what is on after work" readable without scrolling past the

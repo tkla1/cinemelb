@@ -58,6 +58,7 @@ import json
 import math
 import sys
 import threading
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
@@ -67,6 +68,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from . import query as Q
 from .geo import format_distance, geocode
 from .models import MELBOURNE_TZ, normalise_title
+from .sanitize import clean_text, safe_href
 from .store import Store
 
 #: Radius choices offered by the page.  10 km is the default: far enough to
@@ -545,12 +547,10 @@ def _safe_href(url: str) -> str:
 
     Ticket and website links come out of the database, which came off the
     internet; a ``javascript:`` href would run in this page's origin, so the
-    scheme is checked here rather than trusted.
+    scheme is checked here rather than trusted.  Shared with the map export and
+    the SPA through :mod:`cinemelb.sanitize`.
     """
-    candidate = (url or "").strip()
-    if candidate.startswith(("http://", "https://")):
-        return _esc(candidate)
-    return ""
+    return _esc(safe_href(url))
 
 
 def _query_string(q: dict, *, view: str) -> str:
@@ -1060,14 +1060,38 @@ class _Handler(BaseHTTPRequestHandler):
     server: "_Server"
 
     def do_GET(self) -> None:
+        # A browser page can be pointed at 127.0.0.1 by DNS rebinding and will
+        # then send its own hostname in Host.  On a loopback bind that is the
+        # only signal distinguishing the user from a hostile page, so reject
+        # anything but a loopback name.
+        if self.server.allowed_hosts is not None \
+                and self._host_name() not in self.server.allowed_hosts:
+            self._send(421, "text/plain; charset=utf-8",
+                       b"This server answers only to localhost.\n")
+            return
         try:
             status, content_type, body = self.server.app.handle(self.path)
         except Exception as exc:  # one broken view must not take the server down
+            # The exception goes to the terminal; the browser gets a reference.
+            # Exception text routinely contains paths, SQL and file names.
+            ref = uuid.uuid4().hex[:8]
+            print(f"[{ref}] {type(exc).__name__}: {exc}", file=sys.stderr)
             status, content_type, body = (
                 500, "text/html; charset=utf-8",
-                _error_page(f"The query failed: {exc}").encode("utf-8"),
+                _error_page(
+                    f"The query failed (reference {ref}). "
+                    "See the terminal for details."
+                ).encode("utf-8"),
             )
         self._send(status, content_type, body)
+
+    def _host_name(self) -> str:
+        """Host header without its port, lower-cased (``[::1]:8787`` -> ``[::1]``)."""
+        raw = (self.headers.get("Host") or "").strip().lower()
+        if raw.startswith("["):
+            end = raw.find("]")
+            return raw[: end + 1] if end != -1 else raw
+        return raw.rsplit(":", 1)[0] if raw.count(":") == 1 else raw
 
     def _send(self, status: int, content_type: str, body: bytes) -> None:
         self.send_response(status)
@@ -1084,17 +1108,27 @@ class _Handler(BaseHTTPRequestHandler):
 
     def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
         # The stdlib line repeats the request line and fills it with dashes.
-        sys.stderr.write(f"  {self.requestline}  {code}\n")
+        # The request line is untrusted too: strip control bytes so a crafted
+        # path cannot drive the terminal.
+        sys.stderr.write(f"  {clean_text(self.requestline)}  {code}\n")
 
 
 class _Server(ThreadingHTTPServer):
     """A ``ThreadingHTTPServer`` that carries the app the handler needs."""
 
     daemon_threads = True
+    #: Host names accepted on a loopback bind; ``None`` disables the check
+    #: (a deliberately non-loopback bind is already reachable by its address).
+    allowed_hosts: set[str] | None = None
 
-    def __init__(self, address: tuple[str, int], app: _App) -> None:
+    def __init__(self, address: tuple[str, int], app: _App,
+                 allowed_hosts: set[str] | None = None) -> None:
         self.app = app
+        self.allowed_hosts = allowed_hosts
         super().__init__(address, _Handler)
+
+
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 
 
 def make_server(host: str = "127.0.0.1", port: int = 8787,
@@ -1102,12 +1136,16 @@ def make_server(host: str = "127.0.0.1", port: int = 8787,
     """Build (and bind) the server without serving.
 
     Split out of :func:`serve` so a caller can pick an ephemeral port
-    (``port=0``) and drive ``serve_forever`` itself — which is how the
+    (``port=0``) and drive ``serve_forever`` itself - which is how the
     verification script exercises the real request path.
     """
     store = Store(db)
+    loopback = host in ("127.0.0.1", "localhost", "::1", "")
     try:
-        return _Server((host, port), _App(store))
+        return _Server(
+            (host, port), _App(store),
+            allowed_hosts=set(_LOOPBACK_HOSTS) if loopback else None,
+        )
     except OSError:
         # The bind failed, so nothing will ever use this connection.
         store.close()
@@ -1133,6 +1171,9 @@ def serve(host: str = "127.0.0.1", port: int = 8787, db: str | None = None) -> N
     bound_host, bound_port = server.server_address[:2]
     # 0.0.0.0 is a bind address, not a destination: print something clickable.
     shown = "127.0.0.1" if bound_host in ("0.0.0.0", "::", "") else bound_host
+    if server.allowed_hosts is None:
+        print(f"warning          bound to {host}: this server is reachable "
+              "beyond this machine and has no authentication", flush=True)
     print(f"cinemelb web UI  http://{shown}:{bound_port}/", flush=True)
     print(f"database         {server.app.store.path}", flush=True)
     print("read-only · Ctrl-C to stop", flush=True)

@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 2 | Supersedes: 1
+Spec version: 3 | Supersedes: 2
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -119,7 +119,7 @@ file. The bundle is versioned rather than back-compatible: a field change bumps
 
 | Entity | Shape (fields + types) | Source | Validation | Failure mode |
 |---|---|---|---|---|
-| bundle | `{version:2, generated:ISO, counts:{cinemas,films,screenings,dates,urls,rated,posters}, cinemas[], films[], screenings[], dates[], formats[], attrs[], screens[], urls[], places[]}` | `export.build_bundle` | `_validate()` raises `SystemExit` on version/arity/index/range errors | Export aborts — never a half-valid deploy |
+| bundle | `{version:3, generated:ISO, counts:{cinemas,films,screenings,dates,urls,rated,posters}, cinemas[], films[], aliases{}, screenings[], dates[], formats[], attrs[], screens[], urls[], places[]}` | `export.build_bundle` | `_validate()` raises `SystemExit` on version/arity/index/range/alias errors | Export aborts — never a half-valid deploy |
 | film row | 15 fields: `[key:str, title:str, year:int\|null, rating:str, runtime:int\|null, genres:str[], poster:str, synopsis:str(<=200), trailer:str, imdb_id:str, imdb:float\|null, rt:int\|null, mc:int\|null, rt_url:str, mc_url:str]` | `store.films()` + ratings + posters | arity 15; imdb 0..10; rt/mc 0..100; imdb 0 and mc 0 normalised to null | Missing score -> null -> chip omitted; never `0` or `—` |
 | cinema row | 10 fields: `[name, chain, suburb, address, website, tags:str[], lat:float\|null, lon:float\|null, phone, booking_url]` | `store.cinemas(active_only=True)` | arity 10; lat/lon rounded 5dp | No coords -> Maps link falls back to name+address; no address and no links -> venue meta omitted |
 | screening row | 9 ints: `[date_i, film_i, minute, cinema_i, format_i, attr_i, sold:0\|1, url_i(-1=none), screen_i]` | `store.screenings()` | each index in range; minute 0..1439; sold in {0,1}; url -1..len-1 | Dangling index aborts export |
@@ -127,7 +127,8 @@ file. The bundle is versioned rather than back-compatible: a field change bumps
 | places | `[[name, lat, lon], ...]` = landmarks + every venue suburb | `geo.known_places()` + registry | lat -90..90, lon -180..180, non-empty name | No places -> export aborts (SPA cannot geocode) |
 | ratings.json | map `film key -> {imdb_id, imdb, rt, mc, rt_url, mc_url, source[], match_method, confidence, needs_review, fetched_at}` (gitignored) | `cinemelb ratings` | confidence gate; ambiguous -> `needs_review`, not displayed | Missing file -> all nulls; `--no-ratings` skips |
 | posters.json | map `film key -> {url, source, imdb_id, matched_title, matched_year, confidence, match_method, status, fetched_at}` (gitignored) | `cinemelb posters` | exact/near-exact/year±1/ratings-id only; Palace `/poster/` treated as placeholder | No entry -> venue poster if real, else initials tile |
-| title contract | `titles.display_title()` strips programme/venue prefixes (`BFF26`, `JIFF:`, `MIFF`, `JFF`, `SFF`, `CASFFA:`, `Cult Classix:`, `Astor:`, `Palace Cinemas:`, ...) at ingestion; `film_key()` keys on the cleaned title; `Store.normalise_films()` rewrites and merges collisions, original strings kept in SQLite `aka` | `cinemelb/titles.py`, `models.film_key`, `store.normalise_films` | `tests/test_titles.py`; conservative guards: bare `Astor`/`Palace` alone untouched, bare-word strip only for `astor`/`cult classix`, `_CODE` case-sensitive so "Staff Only" survives | Regression = duplicate film rows, broken rating/cover joins, festival noise in search |
+| title contract | `titles.display_title()` strips programme/venue prefixes (`BFF26`, `JIFF:`, `MIFF`, `JFF`, `SFF`, `CASFFA:`, `Cult Classix:`, `Astor:`, `Palace Cinemas:`, ...) at ingestion; `film_key()` keys on the cleaned title; `Store.normalise_films()` rewrites and merges collisions, original strings kept in SQLite `aka` and shipped in the bundle `aliases` map | `cinemelb/titles.py`, `models.film_key`, `store.normalise_films`, `export.build_bundle` | `tests/test_titles.py`, `tests/test_export.py`; conservative guards: bare `Astor`/`Palace` alone untouched, bare-word strip only for `astor`/`cult classix`, `_CODE` case-sensitive so "Staff Only" survives | Regression = duplicate film rows, broken rating/cover joins, festival noise in search |
+| aliases | map `film key -> [published title, ...]` for films whose `aka` differs from the cleaned title; 79 films today | `store.films()[].aka`, normalised in `build_bundle` | `_validate`: keys are exported films, lists non-empty strings <=160 chars; title-equal aliases dropped | Missing alias -> that spelling does not match; an empty map is valid |
 | derived fields | `minute + 1440` and `date - 1` for starts before 06:00 at index time; first exported day's early rows dropped | `app.js::index` | `isPast`/`isTooSoon` compare absolute minutes | A 00:31 session belongs to the previous listing day, shown as `12:31am` |
 
 Deploy freshness: `counts` + `generated` + last date are printed in the footer. The app
@@ -138,7 +139,7 @@ JSON. Current `dist` (rebuilt after the title fix) reports 390 films, 58 cinemas
 Security at the data boundary: `Cinema`/`Film`/`Screening.__post_init__` strip C0/C1 control
 characters, so no adapter can put ESC/BEL into the store. `build_bundle` admits only
 `http(s)` values into `urls` and `films[].poster`, so a renderer that forgets a check cannot
-reintroduce a `javascript:` link. The bundle contract is unchanged (v2).
+reintroduce a `javascript:` link. The bundle contract is v3: v2 plus the `aliases` map (D-016).
 
 ## 6. UI inventory and required states
 
@@ -219,10 +220,10 @@ brotli, not measured — no brotli module installed and none to be added):
 
 | Asset | Raw | Gzip | Cap | Headroom |
 |---|---|---|---|---|
-| `data/bundle.json` (390-film build) | 1,900,000 | 240,000 | 260 KB | 8% |
-| `app.js` | 82,000 | 21.3 KB | 26 KB | 18% |
-| `app.css` (with generated tokens) | 30,000 | 6.7 KB | 12 KB | 44% |
-| `index.html` | 4,824 | 1.8 KB | 6 KB | 70% |
+| `data/bundle.json` (390-film v3 build) | 1,904,185 | 235.9 KB | 260 KB | 9% |
+| `app.js` | 83,803 | 22.2 KB | 26 KB | 15% |
+| `app.css` (with generated tokens) | 29,911 | 6.7 KB | 12 KB | 44% |
+| `index.html` | 4,848 | 1.8 KB | 6 KB | 70% |
 | Font files | 0 | 0 | 0 | system stack only |
 
 - JS <= 26 KB gz, CSS <= 12 KB gz, HTML <= 6 KB gz, bundle <= 260 KB gz.
@@ -435,6 +436,13 @@ raw `json.dumps` in the map, a bare `esc()` href/src, an external tag without `i
 an unguarded `rmtree`, exception text in the 500 page, or a missing `Host` allowlist.
   check: static: uv run python scripts/check_security.py
   status: passing (2026-11-26)
+
+AC-039 [must] While a query matches a film's published alias, search returns that film, and a
+real title match ranks above an alias match for the same film.
+  given: #/search/BFF26 and #/search/500 Miles
+  check: dom: uv run python tests/ui/alias.py
+  status: passing (2026-11-26; 79 aliased films; "BFF26" finds 500 Miles and the
+          suggestion says "listed as BFF26 500 Miles"; the title match ranks first)
 ```
 
 ## 10. Decision log
@@ -678,6 +686,23 @@ Rejected: vendoring now (+162 KB per generated map, new files to ship); version 
 (pins the URL, not the bytes).
 Revisit when: maps are used offline, or unpkg availability/CORS becomes unreliable.
 
+### D-016 Alias search through a bundle-level map (2026-11-26)
+
+Context: D-004 strips programme prefixes at ingestion and keeps the published strings in
+SQLite `aka`. Search read only the cleaned title, so "BFF26" found nothing and the title fix
+read as a regression for anyone who knew the festival code.
+Decision: bundle v3 adds `aliases: {film key: [published title, ...]}` for films whose `aka`
+differs from the cleaned title (79 films today). `searchMatches` scores an alias 25 points
+below the same title match, so a real title match always ranks first; the suggestion row says
+"listed as …" so the result is explicable.
+Rejected: aliases inside each 15-field film row (arity churn for every consumer); shipping
+`aka` on unaliased rows (size for nothing); client-side prefix guessing (finds "BFF26 500
+Miles" but not arbitrary venue spellings); search ignoring `aka` (the regression).
+Consequences: `_validate` rejects dangling or empty aliases; the bundle grows ~4 KB raw;
+`check_bundle.py` reports the aliased count.
+Revisit if: alias volume passes ~200 films, or non-Latin aliases need folding — then add a
+normalised search key rather than loosening substring matching.
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -688,8 +713,8 @@ Revisit when: maps are used offline, or unpkg availability/CORS becomes unreliab
 | 4 (complete 2026-11-26) | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 green via `tests/ui/layout.py` | Remove the focus/live-region calls; render output byte-identical otherwise |
 | 5 (complete 2026-11-26) | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 green via `tests/ui/states.py` + `tests/ui/search.py` | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
 | 6 (complete 2026-11-26) | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 green via `tests/ui/film.py` (hero, safe score/venue links, three groupings, reload) | Revert `renderFilm`/`venueBlocks`; data path untouched |
-| 7 | Search refinement: match `aka`/programme prefix and loose title (needs a new D-entry; likely bundle v3 or a `aliases` table) | New AC: query "BFF26" and "Parky" both return the film; `bundle` arity check updated | Keep v2 bundle and old `searchMatches`; ship behind `#/search/<q>?aliases=0` until the AC is green |
-| 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py` | AC-031..AC-038 green; `check_security.py` green; 144 unit tests; all review proofs flipped | Revert the per-file commits; bundle v2 and all UI render output are unchanged for benign data |
+| 7 (complete 2026-11-26) | Search refinement: match `aka`/programme prefix and loose title (D-016; bundle v3 adds `aliases`) | AC-039 green via `tests/ui/alias.py`; `check_bundle.py` validates aliases; 79 aliased films | Keep the v2 bundle and old `searchMatches`; `S.aliases` defaults to `{}` so the app tolerates an older bundle |
+| 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py` | AC-031..AC-038 green; `check_security.py` green; 148 unit tests; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -811,7 +836,7 @@ current `render` paths, so the manifest never lags the code.
 | # | Question | Owner | Blocks |
 |---|---|---|---|
 | 1 | Is `dist/data/bundle.json` (390 films) the build every baseline uses, and must `check_bundle --against-db` run before any UI evidence? — **resolved:** yes, dist is rebuilt and the check is green | maintainer | AC-029, all visual baselines |
-| 2 | Should search match `aka`/programme prefixes ("BFF26", "Parky")? Needs a bundle v3 field or an aliases table, and a decision entry | maintainer | Phase 7, AC for alias search |
+| 2 | Should search match `aka`/programme prefixes ("BFF26", "Parky")? — **resolved:** bundle v3 `aliases` map (D-016), AC-039; "BFF26" finds the film and title matches still rank first | maintainer | Phase 7, AC-039 |
 | 3 | Do the Playwright Python browser binaries install in this environment (`uv run playwright install chromium`)? - **resolved:** Chromium installs via the dev dependency and `tests/ui/layout.py` is green, so the T2 tier needs no npm | maintainer | AC-016..025 |
 | 4 | Is `--text-3` allowed to stay below 4.5:1 for decorative 11px meta text, or does it become a AA token change? — **resolved:** text tokens now meet 4.5:1; border contrast deferred (D-010) | maintainer | AC-004, phase 2 |
 | 5 | Does hotlinking IMDb/venue poster images carry a licensing or reliability risk worth self-hosting 320 covers? | maintainer | §4 licensing, `posterTile` |
@@ -835,9 +860,10 @@ current `render` paths, so the manifest never lags the code.
 | T2 | `uv run python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
 | T2 | `uv run python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
 | T2 | `uv run python tests/ui/film.py` | hero, score/venue link safety, film grouping persistence | green |
+| T2 | `uv run python tests/ui/alias.py` | bundle aliases, alias search, title ranking, "listed as" | green |
 | T2 | `uv run python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
 | T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security | green (144 tests, 1 skipped) |
-| T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | planned (phase 5) |
+| T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | green |
 | T4 | `uv run python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
 | T5 | `uv run python -m http.server 8801` then `/dist/` and `/cinemelb/web/gallery.html` | 320px/200% zoom, screen reader, both themes | manual, every phase |
 | T5 | `uv run python -m cinemelb refresh && ... && npx wrangler pages deploy dist --project-name cinemelb --branch main` | deploy | manual, release gate |

@@ -84,7 +84,8 @@ def main() -> int:
     print(
         f"OK   bundle v{bundle.get('version')} · "
         f"{counts.get('films')} films · {counts.get('screenings')} sessions · "
-        f"{counts.get('cinemas')} cinemas · {counts.get('dates')} dates"
+        f"{counts.get('cinemas')} cinemas · {counts.get('dates')} dates · "
+        f"{len(bundle.get('aliases') or {})} aliased"
     )
     return 0
 

@@ -90,7 +90,9 @@ into the day/section heading row, with tighter padding and a shortened mobile
 count, cutting the chrome above the first card from ~371 px to ~337 px on an
 iPhone 13 viewport. Verified in Chrome at both sizes with no console errors.
 
-Bundle v2 adds venue and rating fields: cinema rows are
+Bundle v3 adds the `aliases` map (`film key -> published titles`) on top of v2:
+search matches the listing strings kept in `aka`, so programme codes still find
+the cleaned film (D-016). Bundle v2 adds venue and rating fields: cinema rows are
 `[name, chain, suburb, address, website, tags, lat, lon, phone, booking_url]` and
 film rows append `[imdb_id, imdb, rt, mc, rt_url, mc_url]`. Every film card now
 carries an arrow into its own page, every venue line shows its address plus a
@@ -149,18 +151,26 @@ existing rows and moves their screenings. Result: 45 prefixed titles cleaned,
 resolves because its keys were already prefix-free.
 
 **Spec-driven UI harness (26 Nov).** `SPEC.md` is now the authoritative UI spec
-(problem, constraints, data contracts, required states, 30 acceptance criteria,
+(problem, constraints, data contracts, required states, 39 acceptance criteria,
 decision log, phase plan). It was produced with the reusable
 `spec-driven-design` skill and the prior design-tooling research. Phase 1 is
 complete: `cinemelb/web/tokens.json` -> generated block in `app.css` (25 tokens,
 `scripts/build_tokens.py`), `components.json` (18 components), `gallery.html`
 driven by the real `window.CINEMELB.render` functions, and the T0/T1 checks
 (`check_tokens`, `check_contrast`, `check_manifest`, `check_bundle`,
-`check_budget`). All phase-1 checks are green: bundle 234.4 KB gz, JS 21.3 KB gz,
-CSS 6.7 KB gz, HTML 1.8 KB gz; text contrast 4.5:1 in both themes; border
-contrast is a recorded phase-3 warning (D-010). Score colours and focus rings
-moved from literals to tokens; `--text-3` was raised to meet AA. `components.json`
-is the agent's index; screenshots are now reserved for appearance questions.
+`check_budget`). Score colours and focus rings moved from literals to tokens;
+`--text-3` was raised to meet AA.
+
+Phases 2-7 are also complete: card/tile/session states, control sizes and the
+token focus ring, live-count announcements and reduced motion, combobox option
+semantics, the film-page groupings, and alias search (bundle v3). The structural
+gate is four Playwright scripts (`layout`, `states`, `search`, `film`) plus
+`alias`, all under `tests/ui/` and run with plain `uv run python` (Playwright is
+a dev dependency). They measure geometry, computed style, focus and ARIA at
+320/390/1280 and never screenshot. Current build: bundle 235.9 KB gz, JS 22.2
+KB gz, CSS 6.7 KB gz, HTML 1.8 KB gz; 148 unit tests; text contrast 4.5:1 in both
+themes. Border contrast is a recorded phase-3 warning (D-010). `components.json`
+is the agent's index; screenshots are reserved for appearance questions.
 
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.

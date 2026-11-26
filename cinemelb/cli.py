@@ -22,11 +22,14 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.markup import escape as markup_escape
 from rich.table import Table
+from rich.text import Text
 
 from . import query as Q
 from .geo import format_distance, geocode
 from .models import MELBOURNE_TZ, normalise_title
+from .sanitize import clean_text
 from .store import Store
 
 app = typer.Typer(
@@ -40,6 +43,16 @@ console = Console()
 # --------------------------------------------------------------------------- #
 # shared helpers
 # --------------------------------------------------------------------------- #
+
+def _safe(value: object) -> str:
+    """DB text for rich output: control characters out, markup inert."""
+    return markup_escape(clean_text(value))
+
+
+def _cells(*values: object) -> list[Text]:
+    """Table cells that cannot interpret scraped control characters or markup."""
+    return [Text(clean_text(value)) for value in values]
+
 
 def _store(ctx: typer.Context) -> Store:
     store = ctx.obj.get("store") if ctx.obj else None
@@ -226,7 +239,7 @@ def _show_hits(hits: list[Q.Hit], *, as_json: bool = False,
                  h.cinema.get("suburb", "") or ""]
         if show_distance:
             cells.append(format_distance(h.distance_km) if h.distance_km is not None else "")
-        table.add_row(*cells)
+        table.add_row(*[Text(clean_text(cell)) for cell in cells])
     console.print(table)
     if limit and len(hits) > limit:
         console.print(f"[dim]… {len(hits) - limit} more (use --limit)[/dim]")
@@ -332,8 +345,8 @@ def film(
     best = matches[0][1]
     others = [t for _, t in Q.resolve_film(store, title)[1:4]]
     if normalise_title(best) != normalise_title(title):
-        hint = f" [dim](also: {', '.join(others)} — add --similar)[/dim]" if others else ""
-        console.print(f"[dim]Matched:[/dim] [white]{best}[/white]{hint}")
+        hint = f" [dim](also: {', '.join(_safe(t) for t in others)} - add --similar)[/dim]" if others else ""
+        console.print(f"[dim]Matched:[/dim] [white]{_safe(best)}[/white]{hint}")
     elif others:
         # An exact title match is not always the film the user means: "dune"
         # matches the 1984/2021 "Dune" exactly, while "Dune: Part Three" is
@@ -343,8 +356,8 @@ def film(
         rival = _best_alternative(store, title, skip=matches[0][0])
         if rival and rival[2] >= max(chosen * 3, chosen + 20):
             console.print(
-                f"[dim]Also showing:[/dim] [white]{rival[1]}[/white] "
-                f"[dim]({rival[2]} screenings — `cinemelb film {rival[1]!r}`)[/dim]"
+                f"[dim]Also showing:[/dim] [white]{_safe(rival[1])}[/white] "
+                f"[dim]({rival[2]} screenings - `cinemelb film {rival[1]!r}`)[/dim]"
             )
 
     if not hits:
@@ -380,24 +393,24 @@ def film(
             if meta.get("runtime_minutes"):
                 bits.append(f"{meta['runtime_minutes']} min")
             if meta.get("genres"):
-                bits.append(" / ".join(meta["genres"][:3]))
+                bits.append(_safe(" / ".join(meta["genres"][:3])))
             suffix = f"  [dim]{' · '.join(bits)}[/dim]" if bits else ""
             display_title = meta.get("title") or head.film
-            console.print(f"\n[bold white]{display_title}[/bold white]{suffix}")
+            console.print(f"\n[bold white]{_safe(display_title)}[/bold white]{suffix}")
             current_film = film_key
             current_cinema = None
         if head.cinema["id"] != current_cinema:
             dist = f"  [magenta]{format_distance(head.distance_km)}[/magenta]" \
                 if head.distance_km is not None else ""
-            chain = f" [dim]({head.cinema['chain']})[/dim]" if head.cinema.get("chain") else ""
-            console.print(f"  [green]{head.cinema['name']}[/green]"
-                          f" [dim]{head.cinema.get('suburb', '')}[/dim]{chain}{dist}")
+            chain = f" [dim]({_safe(head.cinema['chain'])})[/dim]" if head.cinema.get("chain") else ""
+            console.print(f"  [green]{_safe(head.cinema['name'])}[/green]"
+                          f" [dim]{_safe(head.cinema.get('suburb', ''))}[/dim]{chain}{dist}")
             current_cinema = head.cinema["id"]
         times = []
         for h in group:
             label = f"{date.fromisoformat(h.screening['local_date']):%a} {h.screening['local_time']}"
             if h.screening.get("format"):
-                label += f" ({h.screening['format']})"
+                label += f" ({_safe(h.screening['format'])})"
             times.append(label)
         console.print("      " + "  ".join(times))
 
@@ -516,8 +529,9 @@ def near(
         table.add_column("Next", style="cyan")
         table.add_column("Dist", justify="right", style="magenta")
         for h in list(seen.values())[:limit]:
-            table.add_row(h.film, h.cinema["name"], h.when,
-                          format_distance(h.distance_km) if h.distance_km is not None else "")
+            table.add_row(*_cells(
+                h.film, h.cinema["name"], h.when,
+                format_distance(h.distance_km) if h.distance_km is not None else ""))
         console.print(table)
     else:
         _show_hits(hits, show_distance=True)
@@ -566,8 +580,7 @@ def whats_on(
         names = ", ".join(list(venues.values())[:4])
         if len(venues) > 4:
             names += f" +{len(venues) - 4}"
-        table.add_row(group[0].film, str(len(venues)),
-                      str(len(group)), names)
+        table.add_row(*_cells(group[0].film, len(venues), len(group), names))
     console.print(table)
     _freshness(store)
 
@@ -594,7 +607,7 @@ def trending(
     table.add_column("Venues", justify="right", style="green")
     table.add_column("Sessions", justify="right")
     for i, r in enumerate(rows, 1):
-        table.add_row(str(i), r["title"], str(r["cinema_count"]), str(r["screenings"]))
+        table.add_row(*_cells(i, r["title"], r["cinema_count"], r["screenings"]))
     console.print(table)
 
 
@@ -630,7 +643,7 @@ def cinemas_cmd(
                  ",".join(r.get("tags") or []), str(r.get("screening_count", 0))]
         if detail:
             cells.append(r.get("address", ""))
-        table.add_row(*cells)
+        table.add_row(*[Text(clean_text(cell)) for cell in cells])
     console.print(table)
     console.print(f"[dim]{len(rows)} venues[/dim]")
 
@@ -644,7 +657,7 @@ def search(ctx: typer.Context, text: str = typer.Argument(...)) -> None:
         _empty("No match.")
         return
     for key, title in matches:
-        console.print(f"  [white]{title}[/white] [dim]({key})[/dim]")
+        console.print(f"  [white]{_safe(title)}[/white] [dim]({key})[/dim]")
 
 
 @app.command()
@@ -674,12 +687,12 @@ def stats(ctx: typer.Context) -> None:
             # Only surface an error while the adapter is still failing; a stale
             # message from a run before the adapter existed is just noise.
             err = (r["last_error"] or "")[:52] if r["ok"] < r["venues"] else ""
-            table.add_row(
-                r["source"] or "", str(r["venues"]),
+            table.add_row(*_cells(
+                r["source"] or "", r["venues"],
                 f"{r['ok']}/{r['venues']}",
-                str(r["screenings"] or 0),
+                r["screenings"] or 0,
                 err,
-            )
+            ))
         console.print(table)
 
 
@@ -714,7 +727,7 @@ def next_cmd(
         _emit([h.to_dict() for h in upcoming[:count]], True)
         return
 
-    console.print(f"[bold white]{matches[0][1]}[/bold white]")
+    console.print(f"[bold white]{_safe(matches[0][1])}[/bold white]")
     if not upcoming:
         _empty("No upcoming screenings found.")
         return
@@ -726,8 +739,8 @@ def next_cmd(
                    - datetime.now(MELBOURNE_TZ).date()).days
         rel = "today" if in_days == 0 else ("tomorrow" if in_days == 1 else f"in {in_days}d")
         console.print(f"  [cyan]{when}[/cyan] [dim]({rel})[/dim]  "
-                      f"[green]{h.cinema['name']}[/green] "
-                      f"[dim]{h.cinema.get('suburb', '')}[/dim]{dist}")
+                      f"[green]{_safe(h.cinema['name'])}[/green] "
+                      f"[dim]{_safe(h.cinema.get('suburb', ''))}[/dim]{dist}")
 
 
 @app.command("week")
@@ -766,7 +779,7 @@ def week_cmd(
         _emit({k: [h.to_dict() for h in v] for k, v in by_day.items()}, True)
         return
 
-    console.print(f"[bold white]{matches[0][1]}[/bold white] · next {days} days")
+    console.print(f"[bold white]{_safe(matches[0][1])}[/bold white] · next {days} days")
     if not by_day:
         _empty("No screenings in that window.")
         return
@@ -782,7 +795,7 @@ def week_cmd(
         names = ", ".join(list(venues.values())[:3])
         if len(venues) > 3:
             names += f" +{len(venues) - 3}"
-        table.add_row(f"{d:%a %d %b}", str(len(venues)), str(len(hits)), names)
+        table.add_row(*_cells(f"{d:%a %d %b}", len(venues), len(hits), names))
     console.print(table)
 
 
@@ -888,6 +901,8 @@ def export(
                                  help="Bake cached IMDb/RT/MC scores into the bundle"),
     posters: bool = typer.Option(True, "--posters/--no-posters",
                                  help="Bake resolved cover images into the bundle"),
+    force: bool = typer.Option(False, "--force",
+                               help="Replace --out even if it is not a cinemelb site"),
 ) -> None:
     """Build the static SPA site into a directory, ready to deploy."""
     from .export import build_bundle, write_site
@@ -901,7 +916,7 @@ def export(
         ratings=_ratings_for(store) if ratings else None,
         posters=_posters_for() if posters else None,
     )
-    path = write_site(bundle, out)
+    path = write_site(bundle, out, force=force)
 
     payload = (path / "data" / "bundle.json").stat().st_size
     counts = bundle["counts"]

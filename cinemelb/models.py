@@ -25,6 +25,8 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, date, time, timedelta, timezone, tzinfo
 from typing import Any
 
+from .sanitize import clean_text
+
 try:  # Linux/macOS ship the IANA db; Windows needs the `tzdata` package.
     from zoneinfo import ZoneInfo
 
@@ -168,6 +170,18 @@ class Cinema:
     #: local while the registry can still hold regional cinemas
     metro: bool = True
 
+    def __post_init__(self) -> None:
+        self.name = clean_text(self.name)
+        self.chain = clean_text(self.chain)
+        self.address = clean_text(self.address)
+        self.suburb = clean_text(self.suburb)
+        self.postcode = clean_text(self.postcode)
+        self.phone = clean_text(self.phone)
+        self.website = clean_text(self.website)
+        self.booking_url = clean_text(self.booking_url)
+        self.notes = clean_text(self.notes)
+        self.tags = [clean_text(t) for t in self.tags]
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -194,6 +208,16 @@ class Film:
     #: other titles this film is known by (festival name, original title)
     aka: list[str] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        self.title = clean_text(self.title)
+        self.rating = clean_text(self.rating)
+        self.synopsis = clean_text(self.synopsis)
+        self.poster_url = clean_text(self.poster_url)
+        self.trailer_url = clean_text(self.trailer_url)
+        self.genres = [clean_text(g) for g in self.genres]
+        self.directors = [clean_text(d) for d in self.directors]
+        self.aka = [clean_text(a) for a in self.aka]
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -215,6 +239,13 @@ class Screening:
     ticket_url: str = ""
     sold_out: bool = False
     source: str = ""
+
+    def __post_init__(self) -> None:
+        self.film_title = clean_text(self.film_title)
+        self.screen = clean_text(self.screen)
+        self.format = clean_text(self.format)
+        self.ticket_url = clean_text(self.ticket_url)
+        self.attributes = [clean_text(a) for a in self.attributes]
 
     @property
     def local_dt(self) -> datetime:
