@@ -494,6 +494,13 @@
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
+  /* Scraped strings reach href attributes; escaping HTML does not stop a
+     javascript: or data: URL, so the scheme is the control. */
+  function safeHref(u) {
+    u = String(u == null ? '' : u).trim();
+    return /^https?:\/\//i.test(u) ? u : '';
+  }
+
   function hasAttrs(row, wanted) {
     var set = S.bundle.attrs[S.rowAttr[row]];
     if (!set) return false;
@@ -1402,7 +1409,7 @@
       esc(initials(film[1])) + '</span>';
     if (!film[6]) return '<span class="' + cls + ' poster-none">' + fallback + '</span>';
     return '<span class="' + cls + '">' + fallback +
-      '<img src="' + esc(film[6]) + '" alt="" loading="lazy" ' +
+      '<img src="' + esc(safeHref(film[6])) + '" alt="" loading="lazy" ' +
       'referrerpolicy="no-referrer" onerror="this.remove()"></span>';
   }
 
@@ -1444,7 +1451,7 @@
     if (film[11] != null) {
       var rtHref = film[13] || ('https://www.rottentomatoes.com/search?search=' +
         encodeURIComponent(film[1]));
-      chips += '<a class="score score-rt" href="' + esc(rtHref) +
+      chips += '<a class="score score-rt" href="' + esc(safeHref(rtHref)) +
         '" target="_blank" rel="noopener noreferrer"' +
         ' aria-label="Rotten Tomatoes ' + film[11] + ' percent (opens Rotten Tomatoes)">' +
         '<span class="score-src">Tomatometer</span><span class="score-val">' +
@@ -1453,7 +1460,7 @@
     if (film[12] > 0) {
       var mcHref = film[14] || ('https://www.metacritic.com/search/' +
         encodeURIComponent(film[1]) + '/');
-      chips += '<a class="score score-mc" href="' + esc(mcHref) +
+      chips += '<a class="score score-mc" href="' + esc(safeHref(mcHref)) +
         '" target="_blank" rel="noopener noreferrer"' +
         ' aria-label="Metascore ' + film[12] + ' out of 100 (opens Metacritic)">' +
         '<span class="score-src">Metascore</span><span class="score-val">' +
@@ -1478,15 +1485,15 @@
     }
     var links = '';
     if (maps) {
-      links += '<a class="venue-link" href="' + esc(maps) +
+      links += '<a class="venue-link" href="' + esc(safeHref(maps)) +
         '" target="_blank" rel="noopener noreferrer">Directions</a>';
     }
     if (booking) {
-      links += '<a class="venue-link" href="' + esc(booking) +
+      links += '<a class="venue-link" href="' + esc(safeHref(booking)) +
         '" target="_blank" rel="noopener noreferrer">Tickets</a>';
     }
     if (website) {
-      links += '<a class="venue-link" href="' + esc(website) +
+      links += '<a class="venue-link" href="' + esc(safeHref(website)) +
         '" target="_blank" rel="noopener noreferrer">Website</a>';
     }
     if (phone) {
@@ -1585,7 +1592,7 @@
 
       var url = S.rowUrl[r] >= 0 ? S.bundle.urls[S.rowUrl[r]] : '';
       if (url && !sold) {
-        html += '<a class="' + cls + '" href="' + esc(url) +
+        html += '<a class="' + cls + '" href="' + esc(safeHref(url)) +
           '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
       } else {
         html += '<span class="' + cls + '">' + label +
@@ -1637,7 +1644,7 @@
       (facts.length ? '<p class="film-meta">' + esc(facts.join(' · ')) + '</p>' : '') +
       scoreChips(film) +
       (film[7] ? '<p class="synopsis">' + esc(film[7]) + '</p>' : '') +
-      (film[8] ? '<p><a class="trailer" href="' + esc(film[8]) +
+      (film[8] ? '<p><a class="trailer" href="' + esc(safeHref(film[8])) +
         '" target="_blank" rel="noopener noreferrer">Watch trailer</a></p>' : '') +
       '</div></div>';
 
@@ -1842,19 +1849,22 @@
       if (f[4]) meta.push(f[4] + ' min');
       if (f[10] > 0) meta.push('IMDb ' + f[10].toFixed(1));
       else if (f[12] > 0) meta.push('MC ' + f[12]);
-      html += '<button type="button" class="sug" role="option" id="sug-' + k + '"' +
+      // role="option" belongs on a non-interactive element in the combobox
+      // pattern: focus stays in the input and aria-activedescendant names the
+      // row. A <button> here would put a control inside an option.
+      html += '<div class="sug" role="option" id="sug-' + k + '"' +
         ' data-key="' + esc(f[0]) + '" aria-selected="false">' +
-        (f[6] ? '<span class="sug-thumb"><img src="' + esc(f[6]) +
+        (f[6] ? '<span class="sug-thumb"><img src="' + esc(safeHref(f[6])) +
           '" alt="" loading="lazy" referrerpolicy="no-referrer"' +
           ' onerror="this.parentNode.hidden=true"></span>' : '') +
         '<span class="sug-body">' +
           '<span class="sug-title">' + esc(f[1]) + '</span>' +
           (meta.length ? '<span class="sug-meta">' + esc(meta.join(' \u00b7 ')) + '</span>' : '') +
-        '</span></button>';
+        '</span></div>';
     }
     // Always offer the full grid, even when the six quick hits contain what
     // the user wants: the dropdown is a shortcut, the search page is the view.
-    html += '<button type="button" class="sug sug-all" role="option" id="sug-' + list.length +
+    html += '<div class="sug sug-all" role="option" id="sug-' + list.length +
       '" aria-selected="false" data-search-all="' + esc(raw) + '">' +
       '<span class="sug-all-icon" aria-hidden="true">' +
         '<svg viewBox="0 0 20 20" focusable="false">' +
@@ -1870,7 +1880,7 @@
         '<span class="sug-title">See all ' + all.length + ' result' +
         (all.length === 1 ? '' : 's') + '</span>' +
         '<span class="sug-meta">Open the poster grid for \u201c' + esc(raw) + '\u201d</span>' +
-      '</span></button>';
+      '</span></div>';
     box.innerHTML = html;
     box.hidden = false;
     input.setAttribute('aria-expanded', 'true');
@@ -2070,8 +2080,10 @@
           submitSearch();
         }
       } else if (event.key === 'Escape') {
+        // Close the popup, keep the query and the caret where they were.
+        // type="search" would otherwise let the UA clear the field.
+        event.preventDefault();
         closeSuggest();
-        input.blur();
       }
     });
 

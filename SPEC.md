@@ -335,8 +335,9 @@ AC-020 [must] The search page hides the session filter bar and the near bar.
 
 AC-021 [must] Arrow Down/Up move aria-activedescendant to a real option id, Enter opens
 the highlighted film (or the results page), Escape closes the list and keeps the query.
-  check: aria: uv run --with playwright python tests/ui/search.py::combobox
-  status: planned(phase-5) — options are <button role="option"> today
+  check: aria: uv run --with playwright python tests/ui/search.py  (combobox cases)
+  status: passing — options are non-interactive role=option rows; focus stays in the
+          input; Escape closes, keeps the query and prevents the UA search-clear
 
 AC-022 [must] Route changes move focus to the results heading and update document.title,
 so a screen reader starts at the new content.
@@ -576,7 +577,7 @@ animation timing); add a case before falling back to images.
 | 2 (complete 2026-11-26) | `film-card` + `poster-tile` states (long title, no score, no cover, sold out, +N), score tokens, contrast fix for `--text-3` | AC-004,012,013,014,015 green via `tests/ui/states.py`; contrast >= 4.5:1 both themes | Revert `filmCard`/`posterTile` + manifest entries + token delta; no route change |
 | 3 (complete 2026-11-26) | `view-bar`, `filter-bar`, `near-bar` controls (24/44px targets, `--focus-ring`, label association, pressed states) | AC-017,018,025,026 green via `tests/ui/layout.py`; 119 controls measured | Revert the three render functions and their CSS block; persisted localStorage keys unchanged |
 | 4 (complete 2026-11-26) | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 green via `tests/ui/layout.py` | Remove the focus/live-region calls; render output byte-identical otherwise |
-| 5 | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
+| 5 (complete 2026-11-26) | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 green via `tests/ui/states.py` + `tests/ui/search.py` | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
 | 6 | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 | Revert `renderFilm`/`venueBlocks`; data path untouched |
 | 7 | Search refinement: match `aka`/programme prefix and loose title (needs a new D-entry; likely bundle v3 or a `aliases` table) | New AC: query "BFF26" and "Parky" both return the film; `bundle` arity check updated | Keep v2 bundle and old `searchMatches`; ship behind `#/search/<q>?aliases=0` until the AC is green |
 
@@ -721,6 +722,7 @@ current `render` paths, so the manifest never lags the code.
 | T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (240 / 21.3 / 6.7 / 1.8 KB gz) |
 | T2 | `uv run --with playwright python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
 | T2 | `uv run --with playwright python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
+| T2 | `uv run --with playwright python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
 | T2 | `uv run --with playwright python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
 | T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters | green (129 tests, 1 skipped) |
 | T3 | `uv run --with playwright python tests/ui/search.py` | search submit, combobox, empty states | planned (phase 5) |
