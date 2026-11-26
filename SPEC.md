@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 5 | Supersedes: 4
+Spec version: 6 | Supersedes: 5
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -33,7 +33,7 @@ CONSTRAINTS: Cloudflare Pages static (D-019: unmetered bandwidth, 200-status SPA
   remote poster images (IMDb CDN / venue hosts). Browser matrix: iOS Safari 16+,
   Android Chrome, desktop Chrome/Edge, Firefox ESR. Budgets in §8.
 
-SPEC: this file (SPEC.md), version 5. It is the only UI spec.
+SPEC: this file (SPEC.md), version 6. It is the only UI spec.
 
 UI INVENTORY: 4 routes + shared chrome (header/search, day rail, filter bar, near bar,
   footer). Components exist as functions in app.js: renderRail, renderFilters, renderNear,
@@ -483,15 +483,15 @@ default; a Time/Distance segmented control switches the order and persists in
   check: dom: uv run python tests/ui/film.py  (cinema-sort case)
   status: passing (2026-11-26; 48 venues, time then distance order, survives reload)
 
-AC-044 [must] Session times render as a table whose time cell is the single ticket link and
-carries a visible "Tickets" cue; sold-out and no-URL rows are static. Venue actions are icon
-buttons with accessible names, and the repeated film-page venue blocks omit the street
-address.
+AC-044 [must] Session times render as a table whose time cell is the single ticket link,
+its time is underlined, and the only visible ticket cue is a glyph (no "Tickets" text).
+Sold-out and no-URL rows are static. Venue actions are icon buttons with accessible names,
+and the repeated film-page venue blocks omit the street address.
   check: dom: uv run python tests/ui/states.py and tests/ui/film.py
-  status: passing (2026-11-26; 1 link per row, 2 Tickets cues in the sample, 746 named
+  status: passing (2026-11-26; 1 link per row, glyph-only cue on linked rows, 746 named
           actions, 0 addresses in day venue blocks). Appearance witness:
-          scratch/visual/phase10-film-390.png — the two-column timetable, amber Tickets cue
-          and circular icon actions read cleanly; verdict: keep.
+          scratch/visual/phase10-film-390.png — the underlined time and ticket glyph read
+          cleanly; verdict: keep.
 ```
 
 ## 10. Decision log
@@ -864,8 +864,8 @@ Decision:
   heading, and offers "Show all times" as a route link. The scope is route state, not a
   global filter, so Back returns to the section and the filter bar keeps working within it.
 - Session times render as a two-column table (Time | Format & screen). The time cell is the
-  one link per row and carries a visible "Tickets" cue with a ticket glyph; sold-out and
-  no-URL rows are static. The table keeps the `.sessions` wrapper and `.session` time-cell
+  one link per row, with the time underlined and a ticket glyph as the visible cue; sold-out
+  and no-URL rows are static. The table keeps the `.sessions` wrapper and `.session` time-cell
   vocabulary so the gallery and state checks keep working.
 - Venue actions (directions, tickets, website, phone) are icon buttons with accessible
   names and tooltips. The street address is dropped from the repeated film-page venue
@@ -908,6 +908,25 @@ inside a gate).
 Revisit if: the Pages project or production branch changes, or the release needs a data
 refresh step (add an explicit flag with network consent, not a default).
 
+### D-022 Ticket cue is the glyph, not the word (2026-11-26)
+
+Context: after the session table shipped, every linked time repeated the word "Tickets".
+On a venue with six sessions that is six identical words, and on a phone it crowded the
+time pill without adding information.
+
+Decision: linked rows show only the ticket glyph after the time; the time is underlined
+(`--text-3`, accent on hover) so it reads as the link. The link's `aria-label` and `title`
+still say "Tickets for <time> at <venue>, <day>", so assistive technology and hover keep
+the action explicit. Sold-out and no-URL rows keep their text ("Sold out" / "At venue").
+Each row still has exactly one link.
+
+Rejected: a glyph-only cue without underlining the time (loses the click affordance);
+keeping the word (noise); making the whole row a link (invalid table markup and duplicate
+tab stops); a separate ticket column (two tab stops per session).
+
+Revisit if: the glyph tests poorly with real users, or the session table gains a separate
+price/ticket column.
+
 ## 11. Phase plan
 
 | Phase | Scope (<=1 component or surface) | Acceptance check | Rollback boundary |
@@ -923,6 +942,7 @@ refresh step (add an explicit flag with network consent, not a default).
 | 9 (complete 2026-11-26) | Cinema-type filter (D-017) + RT resolver (D-018): derived `independent` tag, chain list narrowing, Wikidata P1258 join | AC-041 green via `tests/ui/states.py`; unit tests for tag derivation and P1258 batching; RT chips populated | Revert `_cinema_tags`/`cinemaKind` and the filter bar block; revert `_wikidata_rt_ids`; the bundle stays v3 and the cache keeps its old scores |
 | 10 (complete 2026-11-26) | Film-page continuity (D-020): time-bucket scope, session table with a ticket cue, icon venue actions, Time/Distance cinema sort | AC-042,043,044 green via `tests/ui/film.py` + `states.py`; 320px table geometry; budgets hold | Revert `renderFilm`/`dayByTime`/`filmCard`/`venueBlocks`/`sessions`/`viewBar` and the session/venue CSS blocks; no data or bundle change |
 | 11 (complete 2026-11-26) | Release gate (D-021): `scripts/release.py` with clean-tree refusal, full check ladder, pinned wrangler, push verification and live asset-hash poll; `--dry-run` | `--dry-run` green; full run pushes, deploys and verifies the production alias | Revert the script and its README/STATE/SPEC rows; no app or data change |
+| 12 (complete 2026-11-26) | Ticket cue refinement (D-022): glyph-only cue, underlined time, accessible label retained | AC-044 green via `tests/ui/states.py`; 320px/film tests and live hash check | Revert `sessions()` and the `.st-buy`/`a.session .time` CSS; no data change |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -995,13 +1015,14 @@ names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end
       "render": "window.CINEMELB.render.sessions",
       "gallery": "cinemelb/web/gallery.html#session-table",
       "props": [{"name": "rows", "type": "int[]", "required": true}],
-      "states": ["linked", "no-url", "sold-out", "soon"],
+      "states": ["linked", "glyph-cue", "no-url", "sold-out", "soon"],
       "tokens": ["--card", "--card-2", "--line", "--line-2", "--text", "--text-2",
                  "--text-3", "--accent", "--accent-2", "--accent-dim", "--warn",
                  "--focus-ring"],
       "a11y": {"element": "table", "caption": "Sessions at <venue> on <day>",
                "headers": "Time, Format & screen",
                "labelPattern": "Tickets for <time> at <venue>, <day>",
+               "visibleCue": "underlined time + ticket glyph (no text label)",
                "soldOutLabel": "Sold out"},
       "examples": ["gallery/session-table--linked", "gallery/session-table--sold-out"],
       "since": "2026-11-26"

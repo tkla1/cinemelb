@@ -666,13 +666,18 @@ a.chip { display: inline-flex; align-items: center; text-decoration: none; }
 .session:hover { border-color: var(--line-2); color: var(--text); }
 a.session:hover { border-color: var(--accent); background: var(--accent-dim); }
 .session .time { font-size: 13px; font-weight: 560; }
+a.session .time {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--text-3);
+}
+a.session:hover .time { text-decoration-color: var(--accent); }
 .st-buy {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10px; font-weight: 620;
-  text-transform: uppercase; letter-spacing: .04em;
+  display: inline-flex; align-items: center;
   color: var(--accent-2);
 }
-.st-buy svg { width: 11px; height: 11px; }
+.st-buy svg { width: 12px; height: 12px; }
 .st-note {
   font-size: 10px; font-weight: 620;
   text-transform: uppercase; letter-spacing: .04em;

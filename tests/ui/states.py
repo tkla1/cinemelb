@@ -173,8 +173,8 @@ def main() -> int:
                 check(plain is not None and plain["href"] is None and bool(plain["time"]),
                       f"session without a ticket URL renders as a time pill ({plain})")
 
-            # The time display is a table; one link per row, and that link says
-            # "Tickets" so the affordance is visible before hovering.
+            # The time display is a table; one link per row. The time is
+            # underlined and a ticket glyph is the only visible cue.
             if linked_film:
                 goto(page, base, "#/film/" + quote(linked_film[0]), ".session-table")
                 table = page.evaluate(
@@ -187,6 +187,8 @@ def main() -> int:
                     "  rows: rows.length,"
                     "  links: rows.map(tr => tr.querySelectorAll('a').length),"
                     "  cues: t.querySelectorAll('a.session .st-buy').length,"
+                    "  cueText: [...t.querySelectorAll('a.session .st-buy')]"
+                    "   .map(e => e.textContent.trim()).filter(Boolean).length,"
                     "  labels: [...t.querySelectorAll('a.session')]"
                     "   .map(a => a.getAttribute('aria-label') || ''),"
                     "  addrs: document.querySelectorAll('.day-block .venue-addr').length,"
@@ -198,7 +200,9 @@ def main() -> int:
                 check(table and table["rows"] > 0 and max(table["links"]) <= 1,
                       "each session row has at most one link")
                 check(table and table["cues"] == table["links"].count(1),
-                      f"linked rows show the Tickets cue ({table and table['cues']})")
+                      f"linked rows show the ticket glyph ({table and table['cues']})")
+                check(table and table["cueText"] == 0,
+                      "the ticket cue is glyph-only (no visible Tickets text)")
                 check(table and all(l.startswith("Tickets for ") for l in table["labels"]),
                       "ticket links name the time, venue and day")
                 check(table and table["addrs"] == 0,

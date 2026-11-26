@@ -298,8 +298,9 @@ searching). Venue lines show the name, suburb and distance, with circular icon
 buttons for Directions, Tickets, Website and phone; the full street address is
 kept for the day-by-cinema card, where each venue appears once. Sessions are a
 two-column timetable — **Time | Format & screen** — and the time is the ticket
-link, labelled **Tickets** with a ticket glyph so the action is visible before
-hovering. A session with no URL shows "At venue" instead of a dead button.
+link: its text is underlined and a ticket glyph sits beside it, so the action is
+visible before hovering. A session with no URL shows "At venue" instead of a
+dead button.
 
 **Ratings.** IMDb, Rotten Tomatoes and Metacritic chips come from
 `data/ratings.json`, baked in at export time by `python -m cinemelb ratings`;

@@ -1750,7 +1750,9 @@
       var cue;
       if (sold) cue = '<span class="sold-tag">Sold out</span>';
       else if (url) {
-        cue = '<span class="st-buy">Tickets' + venueIcon('ticket') + '</span>';
+        // Glyph only: the time itself is underlined, and the link's
+        // accessible name carries the "Tickets for ..." action.
+        cue = '<span class="st-buy">' + venueIcon('ticket') + '</span>';
       } else {
         cue = '<span class="st-note">At venue</span>';
       }
@@ -1759,7 +1761,8 @@
       if (url && !sold) {
         cell = '<a class="session' + (soon ? ' is-soon' : '') + '" href="' +
           esc(safeHref(url)) +
-          '" target="_blank" rel="noopener noreferrer" aria-label="Tickets for ' +
+          '" target="_blank" rel="noopener noreferrer" title="Buy tickets for ' +
+          esc(clock(minute)) + ' at ' + esc(cinema[0]) + '" aria-label="Tickets for ' +
           esc(clock(minute)) + ' at ' + esc(cinema[0]) + ', ' + esc(longDay(iso)) + '">' +
           '<span class="time">' + clock(minute) + '</span>' + cue + '</a>';
       } else {
