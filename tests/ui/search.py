@@ -1,6 +1,6 @@
 """Combobox and search-surface checks. ARIA/DOM only.
 
-Run: uv run --with playwright python tests/ui/search.py
+Run: uv run python tests/ui/search.py
 """
 
 from __future__ import annotations

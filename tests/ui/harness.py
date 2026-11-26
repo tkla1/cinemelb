@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -15,6 +16,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DIST = ROOT / "dist"
 FAILS: list[str] = []
+
+# Chromium's driver creates artifacts with mkdtemp in the system temp dir,
+# which fails with EPERM on this machine. Keep every artifact in the project
+# scratch directory instead; it also makes runs easy to inspect and clean.
+TMP = ROOT / "scratch" / "playwright-tmp"
+TMP.mkdir(parents=True, exist_ok=True)
+os.environ["TMP"] = os.environ["TEMP"] = str(TMP)
 
 
 def check(condition: bool, message: str) -> None:

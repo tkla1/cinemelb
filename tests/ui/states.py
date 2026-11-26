@@ -1,6 +1,6 @@
 """State checks for cards, tiles and sessions. DOM/computed style only.
 
-Run: uv run --with playwright python tests/ui/states.py
+Run: uv run python tests/ui/states.py
 """
 
 from __future__ import annotations

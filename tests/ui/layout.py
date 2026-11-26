@@ -1,6 +1,6 @@
 """Layout and DOM checks for the built SPA. Measurements only, no screenshots.
 
-Run: uv run --with playwright python tests/ui/layout.py
+Run: uv run python tests/ui/layout.py
 """
 
 from __future__ import annotations

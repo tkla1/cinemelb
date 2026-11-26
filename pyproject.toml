@@ -20,3 +20,8 @@ cinemelb = "cinemelb.cli:run"
 
 [tool.setuptools.packages.find]
 include = ["cinemelb*"]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.65.2",
+]
