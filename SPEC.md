@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 1 | Supersedes: -
+Spec version: 2 | Supersedes: 1
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -44,13 +44,13 @@ UI INVENTORY: 4 routes + shared chrome (header/search, day rail, filter bar, nea
 DESIGN SYSTEM: cinemelb/web/tokens.json -> generated block in app.css; components.json;
   cinemelb/web/gallery.html. See §7.
 
-VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 129 tests, OK
+VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 144 tests, OK
   (skipped=1), verified 2026-11-26; `node --check cinemelb/web/app.js` -> exit 0, verified;
   `uv run python -m cinemelb export --out dist` -> bundle build + _validate();
   `uv run python scripts/check_tokens.py --coverage --literals --motion`,
   `check_contrast.py`, `check_manifest.py`, `check_bundle.py --titles --against-db`,
-  `check_budget.py dist` -> all green (phase 1). `python scripts/verify.py` -> live
-  adapters, not UI. Playwright aria/visual suite is planned.
+  `check_budget.py dist`, `check_security.py` -> all green (security phase). `python
+  scripts/verify.py` -> live adapters, not UI. Playwright layout/states/search are green.
 
 BROWNFIELD RISK: one global stylesheet and one global reset (`*{box-sizing}`); `:root`
   custom properties are the de-facto tokens and every selector reads them;
@@ -102,8 +102,9 @@ discover structure that an aria snapshot would state for free).
 | Tech | Vanilla ES5-compatible IIFE, no modules, no polyfills; native HTML elements first |
 | Build | Zero-build. `cinemelb export` copies/hashes `cinemelb/web/*` only; no npm, no Tailwind CLI |
 | Deploy | Cloudflare Pages, static, root base path `./`, hash routing, SPA fallback to index.html |
-| CSP | None today. Any new inline handler is a liability; prefer delegated listeners |
+| CSP | None today. Any new inline handler is a liability; prefer delegated listeners. Security design in `docs/security-design.md`; external assets require SRI (D-012) |
 | Offline | No. Bundle is fetched once; no service worker |
+| Security | Untrusted by default: scraped text and URLs. Four output contexts (terminal, HTML text/attr, URL, inline script) each have one helper in `cinemelb/sanitize.py`; `export` filters URLs at the trust boundary; the loopback server checks `Host`; `export --out` refuses unmarked directories. Invariants INV-1..INV-10 in `docs/security-design.md` |
 | Licensing | IMDb datasets non-commercial; OMDb CC BY-NC; Metacritic keyless finder undocumented; RT automation against ToS (opt-in only). App code has **no LICENSE file** (open question) |
 | Bundle budget | §8 caps; exceeding one requires a decision entry |
 | Browser matrix | iOS Safari 16+, Android Chrome (last 2), Chrome/Edge (last 2), Firefox ESR |
@@ -133,6 +134,11 @@ Deploy freshness: `counts` + `generated` + last date are printed in the footer. 
 checks `Content-Type` before parsing so an SPA-fallback HTML page cannot be "parsed" as
 JSON. Current `dist` (rebuilt after the title fix) reports 390 films, 58 cinemas,
 19,057 screenings, 128 dates, 320 covers, 216 rated.
+
+Security at the data boundary: `Cinema`/`Film`/`Screening.__post_init__` strip C0/C1 control
+characters, so no adapter can put ESC/BEL into the store. `build_bundle` admits only
+`http(s)` values into `urls` and `films[].poster`, so a renderer that forgets a check cannot
+reintroduce a `javascript:` link. The bundle contract is unchanged (v2).
 
 ## 6. UI inventory and required states
 
@@ -254,7 +260,7 @@ from tokens.json.
 AC-005 [must] No new runtime dependency or third-party request; the only outbound call is
 Nominatim, on an explicit typed address.
   given: #/ with no place set
-  check: dom: uv run --with playwright python tests/ui/network.py::no-third-party
+  check: dom: uv run python tests/ui/network.py::no-third-party
   status: planned(phase-1)
 
 AC-006 [must] Every components.json id resolves to an existing window.CINEMELB.render
@@ -269,7 +275,7 @@ AC-007 [must] Every token named in components.json exists in the generated block
 AC-008 [must] The gallery renders components by calling the app's render functions, and
 each manifest state has an aria snapshot.
   given: cinemelb/web/gallery.html#film-card
-  check: aria: uv run --with playwright python tests/ui/aria.py --gallery film-card
+  check: aria: uv run python tests/ui/aria.py --gallery film-card
   status: partial — gallery renders 13 components through the real renderers; aria
           snapshots are the next harness step (open question 3)
 
@@ -291,83 +297,83 @@ published strings stay in SQLite `aka` and never appear as bundle titles.
 
 AC-012 [must] A missing score renders no chip; Metascore 0 is dropped at export; no card
 or page shows a dash or a zero for a score.
-  check: dom: uv run --with playwright python tests/ui/states.py  (no-scores case)
+  check: dom: uv run python tests/ui/states.py  (no-scores case)
   status: passing (no chip, no source name; 0 zero-scored film rows)
 
 AC-013 [must] A missing or broken cover renders the initials tile without layout shift.
-  check: dom: uv run --with playwright python tests/ui/states.py  (poster-fallback case)
+  check: dom: uv run python tests/ui/states.py  (poster-fallback case)
   status: passing (initials tile, absolute fallback, cover/fallback boxes equal)
 
 AC-014 [must] A session with no ticket URL renders as a non-link pill with its time; a
 sold-out session is dashed, struck through, labelled "Sold out", and unlinked.
-  check: dom: uv run --with playwright python tests/ui/states.py  (session-variants case)
+  check: dom: uv run python tests/ui/states.py  (session-variants case)
   status: passing (span, no href, dashed, line-through, "Sold out")
 
 AC-015 [must] While a filter hides every session on a day, the results region says how
 many sessions were hidden and offers a Clear control.
-  check: dom: uv run --with playwright python tests/ui/states.py  (filtered-empty case)
+  check: dom: uv run python tests/ui/states.py  (filtered-empty case)
   status: passing (hidden count named, Clear restores the day)
 
 AC-016 [must] The day rail marks exactly one day with aria-current="date" and shows the
 14-day window from today.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (rail case, 320/390/1280)
+  check: dom: uv run python tests/ui/layout.py  (rail case, 320/390/1280)
   status: passing (1 aria-current, 14 days at every width)
 
 AC-017 [must] Grouping and sort controls expose aria-pressed/selected state and persist
 across reload via cinemelb-view/cinemelb-sort; "Nearest" is absent without a place.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (persistence case)
+  check: dom: uv run python tests/ui/layout.py  (persistence case)
   status: passing (Cinemas + Title survive reload; no near option without a place)
 
 AC-018 [must] In grid layout each film is exactly one link whose accessible name carries
 the title, and that link opens #/film/<key>.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (poster-tile case)
+  check: dom: uv run python tests/ui/layout.py  (poster-tile case)
   status: passing (tile is one <a>, href #/film/, text includes the title)
 
 AC-019 [must] When Enter is pressed with text in the header search, the app routes to
 #/search/<q>; an empty query does not navigate; the suggestion list ends with "See all N
 results".
-  check: dom: uv run --with playwright python tests/ui/layout.py  (search cases)
+  check: dom: uv run python tests/ui/layout.py  (search cases)
   status: passing ("See all 13 results", empty Enter keeps the hash, Enter routes)
 
 AC-020 [must] The search page hides the session filter bar and the near bar.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (search-chrome case)
+  check: dom: uv run python tests/ui/layout.py  (search-chrome case)
   status: passing (both display: none on #/search/<q>)
 
 AC-021 [must] Arrow Down/Up move aria-activedescendant to a real option id, Enter opens
 the highlighted film (or the results page), Escape closes the list and keeps the query.
-  check: aria: uv run --with playwright python tests/ui/search.py  (combobox cases)
+  check: aria: uv run python tests/ui/search.py  (combobox cases)
   status: passing — options are non-interactive role=option rows; focus stays in the
           input; Escape closes, keeps the query and prevents the UA search-clear
 
 AC-022 [must] Route changes move focus to the results heading and update document.title,
 so a screen reader starts at the new content.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (route-focus case)
+  check: dom: uv run python tests/ui/layout.py  (route-focus case)
   status: passing (activeElement is H1; title is "Search: … — cinemelb")
 
 AC-023 [must] When filters change the result set, the new film/session count is announced
 politely.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (announce-count case)
+  check: dom: uv run python tests/ui/layout.py  (announce-count case)
   status: passing (aria-live="polite"; a filter rewrites "1 film · 1 session" to "0 films · 0 sessions")
 
 AC-024 [must] At 320px wide, document.scrollWidth <= clientWidth on every route.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (320px route sweep)
+  check: dom: uv run python tests/ui/layout.py  (320px route sweep)
   status: passing (day, search and film routes at 320px; also 390/1280)
 
 AC-025 [must] Every interactive target is >= 24x24 CSS px (WCAG 2.2 2.5.8); primary
 mobile controls are >= 44px high as a project rule.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (target-size case)
+  check: dom: uv run python tests/ui/layout.py  (target-size case)
   status: passing — 119 controls measured at 320/1280, none below 24x24; primary mobile
           controls are 44px. Inline links in a sentence use the 2.5.8 exception.
 
 AC-026 [must] In both themes every interactive element shows the focus ring; ring colour
 comes from --focus-ring, not a literal.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (focus-ring case)
+  check: dom: uv run python tests/ui/layout.py  (focus-ring case)
   status: passing — keyboard focus paints a 2px ring whose computed colour equals the
           active theme's --focus-ring (#f3c876 dark, #7d560d light)
 
 AC-027 [must] prefers-reduced-motion removes non-essential animation and shortens the
 spinner.
-  check: dom: uv run --with playwright python tests/ui/layout.py  (reduced-motion case)
+  check: dom: uv run python tests/ui/layout.py  (reduced-motion case)
   status: passing (spinner 2.4s; no other infinite animation; media query active)
 
 AC-028 [must] Budgets hold: bundle <= 260 KB gz, JS <= 26 KB gz, CSS <= 12 KB gz,
@@ -382,8 +388,53 @@ AC-029 [must] A fresh export from the current database reports 390 films, 58 cin
 
 AC-030 [should] The film page groups sessions by day, cinema or time, and remembers the
 choice with the day view's preference.
-  check: dom: uv run --with playwright python tests/ui/film.py::grouping
-  status: planned(phase-6)
+  check: dom: uv run python tests/ui/film.py  (grouping cases)
+  status: passing — Days/Cinemas/Times; the choice survives a reload; hero, score
+          chips and venue links verified in the same run
+
+AC-031 [must] Scraped text cannot close the map's inline script or inject an element from
+it; a title containing `</script><script>…` renders as inert JSON.
+  check: unittest: uv run python -m unittest tests.test_security.TestMapExport -v
+  status: passing (2026-11-26; browser witness: scratch/review/browser/prove.js)
+
+AC-032 [must] Only absolute http(s) URLs reach an href/src or the bundle. A `javascript:`,
+`data:` or `file:` ticket URL is dropped at export and again at render.
+  check: unittest: uv run python -m unittest tests.test_security.TestSanitize tests.test_security.TestMapExport -v
+  status: passing (2026-11-26; prove_bundle.py shows `bundle.urls == []`)
+
+AC-033 [must] `cinemelb export --out` refuses to replace a directory that lacks the
+`.cinemelb-site` marker (unless `--force`), refuses filesystem roots and cwd/ancestors, and
+builds aside before renaming.
+  check: unittest: uv run python -m unittest tests.test_security.TestExportGuard -v
+  status: passing (2026-11-26)
+
+AC-034 [must] On a loopback bind the server answers only loopback `Host` names and returns
+421 for anything else, so a DNS-rebinding page cannot read the API; a non-loopback bind
+prints a warning and disables the check.
+  check: unittest: uv run python -m unittest tests.test_security.TestServer -v
+  status: passing (2026-11-26)
+
+AC-035 [must] A 500 response contains a reference id and no exception text, path or SQL;
+the detail is written to stderr.
+  check: unittest: uv run python -m unittest tests.test_security.TestServer -v
+  status: passing (2026-11-26)
+
+AC-036 [must] Scraped control characters never reach the terminal: values are stripped at
+ingestion and rendered as plain text, so ESC/OSC sequences cannot reach stdout even for rows
+written before the strip existed.
+  check: unittest: uv run python -m unittest tests.test_security.TestCliOutput tests.test_security.TestModelIngestion -v
+  status: passing (2026-11-26; prove_cli_ansi.py shows no ESC)
+
+AC-037 [must] Every external asset in a generated artefact carries a pinned SRI hash and
+`crossorigin`; Leaflet 1.9.4 loads with integrity in a real browser.
+  check: unittest: uv run python -m unittest tests.test_security.TestMapExport -v
+  status: passing (2026-11-26; browser check: scratch/review/browser/sri.js)
+
+AC-038 [must] The security invariants are checked statically: `check_security.py` fails on
+raw `json.dumps` in the map, a bare `esc()` href/src, an external tag without `integrity`,
+an unguarded `rmtree`, exception text in the 500 page, or a missing `Host` allowlist.
+  check: static: uv run python scripts/check_security.py
+  status: passing (2026-11-26)
 ```
 
 ## 10. Decision log
@@ -499,13 +550,14 @@ Context: agents burn tokens screenshotting to discover page structure; the repo 
 browser test harness at all.
 Decision: T0 parse/JSON, T1 tokens+manifest+contrast, T2 aria snapshots and DOM
 assertions, T3 Python unit tests, T4 visual diffs for appearance only, T5 manual.
-Playwright is used from Python via `uv run --with playwright` so no npm enters the repo;
-baselines live in `tests/ui/snapshots/` and `scratch/visual/` (gitignored) for one-offs.
+Playwright is a dev dependency (`uv add --dev playwright`), so it runs with plain
+`uv run python` and no npm enters the repo; baselines live in `tests/ui/snapshots/` and
+`scratch/visual/` (gitignored) for one-offs.
 Rejected: Playwright via npm (`npx playwright test`) — pulls Node packages into a repo that
 has none; manual browser-only checks (the current cost); screenshot-first review (the
 anti-pattern this spec exists to stop).
-Revisit if: `uv run --with playwright` cannot provision browser binaries here, in which
-case fall back to `manual:` with recorded evidence and log the gap in §4.
+Revisit if: `uv run playwright install chromium` cannot provision browser binaries here,
+in which case fall back to `manual:` with recorded evidence and log the gap in §4.
 
 ### D-008 Tokens adopted without renaming existing custom properties (2026-11-26)
 
@@ -568,6 +620,63 @@ the measured control tops (`[301, 302, 302]`), not by a screenshot.
 Revisit when: a new surface has states the script cannot express (e.g. hover-only or
 animation timing); add a case before falling back to images.
 
+### D-012 Security by design: four output contexts, one helper each (2026-11-26)
+
+Context: the 2026-11-26 review (`docs/security-review-2026-11-26.md`) found the same root
+cause in three artefacts - server HTML was escaped and scheme-checked, while the map and SPA
+were neither. `json.dumps` in `<script>`, `esc()` without a scheme allowlist, and raw
+control characters in rich tables are each one missing context rule, not three unrelated
+bugs.
+Decision: `cinemelb/sanitize.py` is the only home for output-context guards:
+`clean_text` (terminal/storage), `safe_href` (href/src), `json_for_script` (inline script).
+`serve`, `mapview`, `export`, `cli` and `models` import it; `build_bundle` filters URLs at
+the trust boundary so a missed renderer is not a single point of failure. Invariants and
+the "adding a renderer" checklist live in `docs/security-design.md`. `scripts/check_security.py`
+is the static gate and `tests/test_security.py` the behavioural one.
+Rejected:
+- Fix each sink inline (three copies of the rule; the review already showed the drift).
+- HTML-escape JSON (`src`/`href` semantics unchanged; `</script>` still parses as markup).
+- Trust `esc()` for URLs (it escapes characters, not schemes).
+Revisit when: a new output context appears (CSV, PDF, response headers, log format) - add a
+helper and a test before the first use, not after the first incident.
+Consequences: one extra module; renderers must import it; the guard makes the old patterns
+fail loudly.
+
+### D-013 `export --out` requires a site marker (2026-11-26)
+
+Context: `write_site` deleted any existing `--out` directory that was not cwd or an ancestor;
+a sibling folder or another drive root passed the guard.
+Decision: a `.cinemelb-site` marker authorises replacement; otherwise refuse unless
+`--force`. Filesystem roots are refused explicitly. The site is built in a sibling
+`.building` directory and renamed into place only after a successful build.
+Rejected: prompt on stdin (breaks scripts); compare directory contents (heuristics rot);
+delete only files the tool knows (leaves stale hashed assets).
+Revisit when: export gains an incremental mode, which would change the replacement model.
+
+### D-014 Loopback server: `Host` allowlist and generic errors (2026-11-26)
+
+Context: the read-only server answered any `Host` header (DNS rebinding) and rendered the
+exception text on a 500. The data is public and the server cannot write, so the impact was
+low - but the controls are cheap and the class recurs.
+Decision: a loopback bind accepts only `127.0.0.1`, `localhost`, `[::1]`, `::1` and answers
+421 otherwise; a deliberate non-loopback bind prints a warning and disables the check
+(it is already reachable). 500s log the exception with a short reference and render only the
+reference. Request lines are stripped of control characters before logging.
+Rejected: authentication (no state to protect, adds a credential to a local tool); Origin-only
+checks (Host is the rebinding signal and needs no CORS preflight).
+Revisit when: the server gains a write route or serves private data; then add origin/CSRF
+checks and reconsider auth.
+
+### D-015 External assets: pinned SRI, no new request without a decision (2026-11-26)
+
+Context: the generated map pulled Leaflet 1.9.4 from unpkg without integrity, in an artefact
+users are expected to open and host. The SPA itself has no external assets.
+Decision: external `<script>`/`<link>` carry `integrity` (sha256 of the pinned bytes) and
+`crossorigin="anonymous"`; the static guard fails an external tag without integrity. Vendoring
+remains the fallback if offline map use matters more than file size.
+Rejected: vendoring now (+162 KB per generated map, new files to ship); version pin alone
+(pins the URL, not the bytes).
+Revisit when: maps are used offline, or unpkg availability/CORS becomes unreliable.
 
 ## 11. Phase plan
 
@@ -578,8 +687,9 @@ animation timing); add a case before falling back to images.
 | 3 (complete 2026-11-26) | `view-bar`, `filter-bar`, `near-bar` controls (24/44px targets, `--focus-ring`, label association, pressed states) | AC-017,018,025,026 green via `tests/ui/layout.py`; 119 controls measured | Revert the three render functions and their CSS block; persisted localStorage keys unchanged |
 | 4 (complete 2026-11-26) | Route/Chrome a11y remainder: announcement assertion for live counts, reduced-motion audit (focus, rail and 320px scroll already covered in phase 1) | AC-023,027 green via `tests/ui/layout.py` | Remove the focus/live-region calls; render output byte-identical otherwise |
 | 5 (complete 2026-11-26) | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 green via `tests/ui/states.py` + `tests/ui/search.py` | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
-| 6 | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 | Revert `renderFilm`/`venueBlocks`; data path untouched |
+| 6 (complete 2026-11-26) | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 green via `tests/ui/film.py` (hero, safe score/venue links, three groupings, reload) | Revert `renderFilm`/`venueBlocks`; data path untouched |
 | 7 | Search refinement: match `aka`/programme prefix and loose title (needs a new D-entry; likely bundle v3 or a `aliases` table) | New AC: query "BFF26" and "Parky" both return the film; `bundle` arity check updated | Keep v2 bundle and old `searchMatches`; ship behind `#/search/<q>?aliases=0` until the AC is green |
+| 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py` | AC-031..AC-038 green; `check_security.py` green; 144 unit tests; all review proofs flipped | Revert the per-file commits; bundle v2 and all UI render output are unchanged for benign data |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -702,10 +812,10 @@ current `render` paths, so the manifest never lags the code.
 |---|---|---|---|
 | 1 | Is `dist/data/bundle.json` (390 films) the build every baseline uses, and must `check_bundle --against-db` run before any UI evidence? — **resolved:** yes, dist is rebuilt and the check is green | maintainer | AC-029, all visual baselines |
 | 2 | Should search match `aka`/programme prefixes ("BFF26", "Parky")? Needs a bundle v3 field or an aliases table, and a decision entry | maintainer | Phase 7, AC for alias search |
-| 3 | Do the Playwright Python browser binaries install in this environment (`uv run --with playwright playwright install chromium`)? — **resolved:** Chromium installs and `tests/ui/layout.py` is green, so the T2 tier needs no npm | maintainer | AC-016..025 |
+| 3 | Do the Playwright Python browser binaries install in this environment (`uv run playwright install chromium`)? - **resolved:** Chromium installs via the dev dependency and `tests/ui/layout.py` is green, so the T2 tier needs no npm | maintainer | AC-016..025 |
 | 4 | Is `--text-3` allowed to stay below 4.5:1 for decorative 11px meta text, or does it become a AA token change? — **resolved:** text tokens now meet 4.5:1; border contrast deferred (D-010) | maintainer | AC-004, phase 2 |
 | 5 | Does hotlinking IMDb/venue poster images carry a licensing or reliability risk worth self-hosting 320 covers? | maintainer | §4 licensing, `posterTile` |
-| 6 | Should the app gain a CSP? The one inline `onclick` on `.film-open` and the inline theme script both shape that answer | maintainer | D-007 consequences, phase 2 |
+| 6 | Should the app gain a CSP? The one inline `onclick` on `.film-open` and the inline theme script both shape that answer. External assets now carry SRI (D-015); the map's inline JSON is escaped (D-012) | maintainer | D-007 consequences, phase 2 |
 | 7 | Is the 15s geolocation watchdog + iOS copy still correct on iOS 18/26, or does `navigator.permissions.query` allow a cleaner path? | maintainer | near-bar AC (not yet written) |
 | 8 | Does the repo get a LICENSE (code) now that posters and scores carry third-party terms? | maintainer | §4 |
 
@@ -719,14 +829,16 @@ current `render` paths, so the manifest never lags the code.
 | T1 | `uv run python scripts/check_contrast.py` | WCAG ratios from tokens.json | green (text 4.5:1; borders warning D-010) |
 | T1 | `uv run python scripts/check_manifest.py` | manifest <-> render fn <-> gallery <-> tokens | green (18 components / 25 tokens) |
 | T1 | `uv run python scripts/check_bundle.py dist/data/bundle.json` (`--titles`, `--against-db`) | arity, indices, counts, prefixes, DB parity | green |
-| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (240 / 21.3 / 6.7 / 1.8 KB gz) |
-| T2 | `uv run --with playwright python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
-| T2 | `uv run --with playwright python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
-| T2 | `uv run --with playwright python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
-| T2 | `uv run --with playwright python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
-| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters | green (129 tests, 1 skipped) |
-| T3 | `uv run --with playwright python tests/ui/search.py` | search submit, combobox, empty states | planned (phase 5) |
-| T4 | `uv run --with playwright python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
+| T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (234 / 21.9 / 6.7 / 1.8 KB gz) |
+| T1 | `uv run python scripts/check_security.py` | output-context invariants, SRI, export guard, Host allowlist, 500 text | green (2026-11-26) |
+| T2 | `uv run python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
+| T2 | `uv run python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
+| T2 | `uv run python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
+| T2 | `uv run python tests/ui/film.py` | hero, score/venue link safety, film grouping persistence | green |
+| T2 | `uv run python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
+| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security | green (144 tests, 1 skipped) |
+| T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | planned (phase 5) |
+| T4 | `uv run python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
 | T5 | `uv run python -m http.server 8801` then `/dist/` and `/cinemelb/web/gallery.html` | 320px/200% zoom, screen reader, both themes | manual, every phase |
 | T5 | `uv run python -m cinemelb refresh && ... && npx wrangler pages deploy dist --project-name cinemelb --branch main` | deploy | manual, release gate |
 
