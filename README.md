@@ -303,9 +303,10 @@ those components by calling the app's own render functions through
 `/cinemelb/web/gallery.html`). The verification ladder is
 `scripts/check_tokens.py --coverage --literals --motion`,
 `check_contrast.py`, `check_manifest.py`,
-`check_bundle.py --titles --against-db`, `check_budget.py dist`, then the unit
-suite. Structural questions use DOM/aria checks; screenshots are only for
-appearance questions.
+`check_bundle.py --titles --against-db`, `check_budget.py dist`,
+`security_gate.py` (gitleaks + ruff + project invariants), then the unit suite.
+Structural questions use DOM/aria checks; screenshots are only for appearance
+questions.
 
 `_headers` gives the hashed assets a one-year immutable cache and the bundle
 five minutes with revalidation. A `404.html` is deliberately absent: Cloudflare

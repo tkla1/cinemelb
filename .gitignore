@@ -11,6 +11,9 @@ data/posters.json
 _recon/
 scratch/
 
+# transient directories created by tests and probes
+tmp*/
+
 # generated map exports
 *.html
 !data/**/*.html

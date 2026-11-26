@@ -1,7 +1,7 @@
 # Spec: cinemelb — static showtimes UI and design system
 
 Status: active | Owner: project maintainer (agent-authored) | Updated: 2026-11-26
-Spec version: 3 | Supersedes: 2
+Spec version: 4 | Supersedes: 3
 
 This is the project's single authoritative spec for the web UI. `docs/plan-2026-11-26.md`
 is a historical feature plan (ratings/posters), not a rival spec. The skill default path
@@ -44,12 +44,13 @@ UI INVENTORY: 4 routes + shared chrome (header/search, day rail, filter bar, nea
 DESIGN SYSTEM: cinemelb/web/tokens.json -> generated block in app.css; components.json;
   cinemelb/web/gallery.html. See §7.
 
-VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 144 tests, OK
+VERIFY COMMANDS: `uv run python -m unittest discover -s tests` -> 159 tests, OK
   (skipped=1), verified 2026-11-26; `node --check cinemelb/web/app.js` -> exit 0, verified;
   `uv run python -m cinemelb export --out dist` -> bundle build + _validate();
   `uv run python scripts/check_tokens.py --coverage --literals --motion`,
   `check_contrast.py`, `check_manifest.py`, `check_bundle.py --titles --against-db`,
-  `check_budget.py dist`, `check_security.py` -> all green (security phase). `python
+  `check_budget.py dist`, `security_gate.py` (gitleaks + ruff + JS sinks + invariants)
+  -> all green (security phase). `python
   scripts/verify.py` -> live adapters, not UI. Playwright layout/states/search are green.
 
 BROWNFIELD RISK: one global stylesheet and one global reset (`*{box-sizing}`); `:root`
@@ -443,6 +444,14 @@ real title match ranks above an alias match for the same film.
   check: dom: uv run python tests/ui/alias.py
   status: passing (2026-11-26; 79 aliased films; "BFF26" finds 500 Miles and the
           suggestion says "listed as BFF26 500 Miles"; the title match ranks first)
+
+AC-040 [must] One offline, deterministic command scans the publishable worktree and every
+git commit for secrets, runs the Python S-rules and JS sinks, checks the static invariants,
+the lock contract and the exported bundle, and exits 2 rather than pass if a scanner cannot
+run.
+  check: static: uv run python scripts/security_gate.py
+  status: passing (2026-11-26; ~1.1s; gate caught a staged AWS-shaped key and an
+          unreachable history blob during its own test, then both were purged)
 ```
 
 ## 10. Decision log
@@ -639,8 +648,9 @@ Decision: `cinemelb/sanitize.py` is the only home for output-context guards:
 `clean_text` (terminal/storage), `safe_href` (href/src), `json_for_script` (inline script).
 `serve`, `mapview`, `export`, `cli` and `models` import it; `build_bundle` filters URLs at
 the trust boundary so a missed renderer is not a single point of failure. Invariants and
-the "adding a renderer" checklist live in `docs/security-design.md`. `scripts/check_security.py`
-is the static gate and `tests/test_security.py` the behavioural one.
+the "adding a renderer" checklist live in `docs/security-design.md`. `scripts/security_gate.py`
+is the one deterministic gate (gitleaks, ruff S-rules, JS sinks, and `check_security.py`), and
+`tests/test_security.py` is the behavioural suite.
 Rejected:
 - Fix each sink inline (three copies of the rule; the review already showed the drift).
 - HTML-escape JSON (`src`/`href` semantics unchanged; `</script>` still parses as markup).
@@ -714,7 +724,7 @@ normalised search key rather than loosening substring matching.
 | 5 (complete 2026-11-26) | `search-suggest` + search page states: option semantics, combobox keys, empty states, See-all row | AC-015,019,020,021 green via `tests/ui/states.py` + `tests/ui/search.py` | Revert `renderSuggest`/`renderSearch`; dropdown falls back to the current button options |
 | 6 (complete 2026-11-26) | `film-hero` + `venue-block`/`session-pill` polish and film-page grouping persistence | AC-030 green via `tests/ui/film.py` (hero, safe score/venue links, three groupings, reload) | Revert `renderFilm`/`venueBlocks`; data path untouched |
 | 7 (complete 2026-11-26) | Search refinement: match `aka`/programme prefix and loose title (D-016; bundle v3 adds `aliases`) | AC-039 green via `tests/ui/alias.py`; `check_bundle.py` validates aliases; 79 aliased films | Keep the v2 bundle and old `searchMatches`; `S.aliases` defaults to `{}` so the app tolerates an older bundle |
-| 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py` | AC-031..AC-038 green; `check_security.py` green; 148 unit tests; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
+| 8 (complete 2026-11-26) | Security hardening: `sanitize.py`, map script/href/SRI, SPA `safeHref`, export marker/temp, `Host` allowlist, generic 500, ingestion + terminal strip, `tests/test_security.py`, `scripts/check_security.py`, `scripts/security_gate.py` | AC-031..AC-038, AC-040 green; gate ~1.1s; all review proofs flipped | Revert the per-file commits; UI render output is unchanged for benign data. Bundle v3 (phase 7) is orthogonal and validated separately |
 
 Rules: no phase starts before its decision exists; phase 1 is the substrate; each phase
 names its AC ids; budgets (`check_budget.py`) run in every phase, not at the end.
@@ -855,14 +865,15 @@ current `render` paths, so the manifest never lags the code.
 | T1 | `uv run python scripts/check_manifest.py` | manifest <-> render fn <-> gallery <-> tokens | green (18 components / 25 tokens) |
 | T1 | `uv run python scripts/check_bundle.py dist/data/bundle.json` (`--titles`, `--against-db`) | arity, indices, counts, prefixes, DB parity | green |
 | T1 | `uv run python scripts/check_budget.py dist` | §8 gzip caps | green (234 / 21.9 / 6.7 / 1.8 KB gz) |
-| T1 | `uv run python scripts/check_security.py` | output-context invariants, SRI, export guard, Host allowlist, 500 text | green (2026-11-26) |
+| T1 | `uv run python scripts/security_gate.py` | secrets in worktree + every commit, ruff S-rules, JS sinks, invariants, lock, bundle | green (~1.1s, 2026-11-26) |
+| T1 | `uv run python scripts/check_security.py` | output-context invariants, SRI, export guard, Host allowlist, 500 text (also run by the gate) | green (2026-11-26) |
 | T2 | `uv run python tests/ui/layout.py` | aria snapshots, geometry, focus, target size at 320/390/1280 | green (49 checks) |
 | T2 | `uv run python tests/ui/states.py` | card/tile/session states, poster fallback, filtered empty | green |
 | T2 | `uv run python tests/ui/search.py` | combobox semantics, keys, See-all, zero/empty search | green |
 | T2 | `uv run python tests/ui/film.py` | hero, score/venue link safety, film grouping persistence | green |
 | T2 | `uv run python tests/ui/alias.py` | bundle aliases, alias search, title ranking, "listed as" | green |
 | T2 | `uv run python tests/ui/aria.py --route day` | per-route aria baselines | planned (phase 4) |
-| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security | green (144 tests, 1 skipped) |
+| T3 | `uv run python -m unittest discover -s tests` | data, titles, ratings, posters, adapters, security, gate adapters | green (159 tests, 1 skipped) |
 | T3 | `uv run python tests/ui/search.py` | search submit, combobox, empty states | green |
 | T4 | `uv run python tests/ui/visual.py --only focus,poster-fallback` | focus ring, fallback tile | planned (phase 2/3) |
 | T5 | `uv run python -m http.server 8801` then `/dist/` and `/cinemelb/web/gallery.html` | 320px/200% zoom, screen reader, both themes | manual, every phase |

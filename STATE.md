@@ -172,6 +172,14 @@ KB gz, CSS 6.7 KB gz, HTML 1.8 KB gz; 148 unit tests; text contrast 4.5:1 in bot
 themes. Border contrast is a recorded phase-3 warning (D-010). `components.json`
 is the agent's index; screenshots are reserved for appearance questions.
 
+**Security gate (26 Nov).** `uv run python scripts/security_gate.py` is the one
+deterministic, offline check: gitleaks scans the publishable snapshot and every
+commit, ruff's flake8-bandit rules cover Python sinks, the three reviewed JS
+sinks are checked directly, and the project invariants + lock + bundle follow.
+It runs in about 1.1s and exits 2 rather than pass if a scanner cannot run.
+Dependency CVEs are deliberately an online companion (`uvx pip-audit`), not part
+of the fast gate. Design and rejected alternatives: `docs/security-design.md` §9.
+
 A Cloudflare Pages *probe* project (`cinemelb-spa-probe`) still exists from the
 hosting experiment; it is unreferenced and can be deleted from the dashboard.
 

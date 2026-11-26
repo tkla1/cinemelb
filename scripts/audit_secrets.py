@@ -14,6 +14,10 @@ Checks three surfaces:
 
 Run: uv run python scripts/audit_secrets.py
 Exit code 1 only when a secret is found in committed content.
+
+For the fast deterministic gate (gitleaks + ruff + project invariants), run
+`uv run python scripts/security_gate.py`. This tool remains the deeper audit:
+it also reports unreachable objects and local ignored files.
 """
 
 from __future__ import annotations

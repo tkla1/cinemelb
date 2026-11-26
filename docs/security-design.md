@@ -46,7 +46,7 @@ an HTML escaper; `esc()` is not a URL validator; stripping HTML tags is not sani
 | INV-5 | The loopback server answers only loopback `Host` names | `serve._Server.allowed_hosts` | `TestServer` (421/200) |
 | INV-6 | No exception text, path or SQL reaches a browser | `serve._Handler.do_GET` (ref + stderr) | `test_500_does_not_echo_the_exception` |
 | INV-7 | Every external asset is version-pinned with SRI | `mapview` template | `test_cdn_assets_have_integrity`, `sri.js` browser check |
-| INV-8 | Secrets never enter the repo, bundle, logs or URLs | `.gitignore`, `scripts/audit_secrets.py`, gitleaks | CI / review step |
+| INV-8 | Secrets never enter the repo, bundle, logs or URLs | `.gitignore`, `scripts/security_gate.py` (gitleaks), `scripts/audit_secrets.py` | `security_gate.py` (worktree + every commit) |
 | INV-9 | The server is read-only and GET-only | `serve._App.handle` routes | `TestServer` (POST 501, no write route) |
 | INV-10 | All SQL values are parameters | `store`/`query` | code review; `scripts/check_security.py` does not cover it |
 
@@ -82,7 +82,8 @@ no credentials, no state change. A hostile page that rebinds gets 421.
    test in `tests/test_security.py` first.
 4. If it emits a new file, decide whether that file is shared. If yes, it gets the same
    URL/script treatment as the map and is added to `CHECKS` in `scripts/check_security.py`.
-5. Run `uv run python scripts/check_security.py`; it fails on the old patterns.
+5. Run `uv run python scripts/security_gate.py`; it fails on the old patterns, leaked
+   secrets, and the Python/JS sinks.
 
 ## 6. Adding a new adapter
 
@@ -98,12 +99,16 @@ no credentials, no state change. A hostile page that rebinds gets 421.
 ## 7. Verification
 
 ```text
-uv run python scripts/check_security.py          # static invariants
+uv run python scripts/security_gate.py          # one offline gate (about 1s)
 uv run python -m unittest tests.test_security -v # behavioural invariants
 node --check cinemelb/web/app.js
 uv run python tests/ui/layout.py
 uv run python scripts/check_bundle.py --against-db
 ```
+
+The gate runs gitleaks (worktree and every commit), ruff's S-rules, the three reviewed JS
+sinks, the static invariants below, the lock contract and the exported bundle. It exits 2
+rather than pass when a scanner cannot run.
 
 The review's executable witnesses remain in `scratch/review/prove_*.py` and flip from fail
 to pass; they are scratch, not a CI dependency.
@@ -120,3 +125,36 @@ to pass; they are scratch, not a CI dependency.
 - **`scratch/` is gitignored** and may contain live proof data; never publish it.
 - **First-party scraping** is a legal/ToS question tracked in `docs/api-reference/`, not a
   security control.
+- **The ratings pickle cache** is written by this process and read with `pickle.load`; it is
+  trusted local state, not untrusted input (annotated `S301`). Moving it to JSON would remove
+  the sink if the cache ever becomes shareable.
+- **Dependency CVEs are not in the offline gate.** Advisory lookups need current data from
+  OSV/PyPI; run `uvx pip-audit` or an OSV scan as the online companion. The gate stays
+  deterministic and quick.
+
+## 9. The security gate
+
+One command, offline, about a second:
+
+```text
+uv run python scripts/security_gate.py
+```
+
+| Layer | Tool | Why this one |
+|---|---|---|
+| Secrets, worktree | `gitleaks dir` over a snapshot of publishable files | maintained rules and entropy checks, redacted output |
+| Secrets, history | `gitleaks git` plus a verbatim `.env` value check | every reachable commit; local values cannot be a generic rule |
+| Python SAST | `ruff check --select S102,S301,S307,S501,S506,S602,S605,S608` | the flake8-bandit rules in a fast Rust binary |
+| JS sinks | `eval`, `new Function`, `document.write` | semgrep's Windows build fails on the system certificate store; these are the three JS sinks the review found |
+| Project invariants | `check_security.py` | no off-the-shelf rule knows the map/href/SRI/export/Host controls |
+| Supply chain | structural `uv.lock` check | deterministic; advisory lookups need network |
+
+Rejected: hand-maintained secret regexes (gitleaks is broader and updated); bandit as a
+project dependency (the venv binary hung here; ruff implements the same S-rules); semgrep
+CLI (TLS failure); pip-audit/OSV inside the fast gate (network, non-deterministic);
+pre-commit only (bypassable).
+
+Prerequisites: gitleaks 8.28+ (the `dir` command) and ruff, installed as persistent tools.
+gitleaks scans every reachable commit; `scripts/audit_secrets.py` remains the deeper audit
+for unreachable objects and local ignored files. The gate checks the operator's `.env`
+values verbatim in the worktree and in every object, which no generic rule can do.

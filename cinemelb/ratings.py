@@ -780,8 +780,11 @@ def _parse_pickle(path: Path, sources: Iterable[Path]) -> Any | None:
         newest = max(p.stat().st_mtime for p in sources)
         if path.stat().st_mtime < newest:
             return None
+        # Local cache written by this process from the downloaded datasets.
+        # Planting it already requires control of the operator's machine, so
+        # this is not an untrusted-input sink (security design, residual risk).
         with path.open("rb") as fh:
-            return pickle.load(fh)
+            return pickle.load(fh)  # noqa: S301
     except Exception:  # noqa: BLE001 - a corrupt cache is just a rebuild
         return None
 
